@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AndroidManifest.xml — declares permissions, AR requirements, and the main activity -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Camera permission: required for AR -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- Tell Google Play: this app REQUIRES an AR-capable camera -->
+    <uses-feature android:name="android.hardware.camera.ar" android:required="true" />
+
+    <application
+        android:allowBackup="true"
+        android:label="TraceAR"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.TraceAR">
+
+        <!-- Tell ARCore that this app requires AR support (won't install on unsupported devices) -->
+        <meta-data
+            android:name="com.google.ar.core"
+            android:value="required"
+            tools:replace="android:value" />
+
+        <!-- Main (and only) Activity — uses Jetpack Compose for all UI -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:screenOrientation="unspecified">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
