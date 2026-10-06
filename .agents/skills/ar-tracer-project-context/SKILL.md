@@ -23,6 +23,7 @@ Kotlin, Jetpack Compose, ARCore, SceneView, OpenCV for Android, local storage fo
 6. Saved data uses paper-normalized coordinates only.
 7. The camera view is the main thing on screen. UI is a slim top bar, a compact bottom dock, and small bottom sheets (sheet at most 30% of screen height; UI under 15% of the screen when no sheet is open).
 8. Lock/unlock: locked means image gestures are disabled (and pinch zooms the view); unlocked means gestures edit the image.
+9. Paper frame: A 2D rigid pose (translation dx, dz and rotation theta) on the locked plane relative to the single overlay anchor, initialized to identity at calibration. Everything attached to the paper (quad mesh, image, section grid and done marks, guides, ruler, corner handles, lines-only and tonal layers) renders relative to this frame using paper-normalized coordinates. Changing the paper frame never alters saved project data, the image transform, or the undo stack. When Paper lock is turned off, the paper frame remains identity.
 
 ## Features already built (do not break any of these)
 - Foundation: gallery image picker, camera permission, ARCore support check, 4-corner calibration with markers and undo, quad overlay, opacity slider, change image, keep screen awake, portrait and landscape.

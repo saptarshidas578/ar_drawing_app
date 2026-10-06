@@ -12,3 +12,10 @@ All notable changes and inventory of features for the AR Tracer app.
 - **Projects:** lines-only mode (sensitivity, thickness, color), project list, save and resume, autosave.
 - **UI:** camera-first layout with top bar, bottom dock, sheets, Hold to Peek, Focus mode, left-handed mode, auto line color.
 - **Precision:** paper size presets, real-world size, ruler, fine nudge, snap rotation, undo/redo, crop.
+- **Paper Lock (Dynamic Paper Tracking):**
+  - Real-time 2D rigid tracking $(\Delta x, \Delta z, \Delta \theta)$ on the locked table plane keeping the tracing overlay locked when paper slides or rotates.
+  - Zero vertex buffer churn: composed dynamically in SceneView Filament GPU node poses without modifying saved normalized data or undo stack.
+  - Measurement A (Edge ray-plane unprojection with 5% side length validation) & Measurement B (Rectified 512px grayscale template with ORB feature matching and RANSAC outlier rejection).
+  - Fusion engine with temporal gating (3-cycle confirmation for large jumps >1cm), deadband ($0.5\text{ mm}$, $0.1^\circ$), and slow template blending during stationary drawing (3s still).
+  - Background coroutine loop at 5–10 Hz with immediate CPU camera image closing, battery-saver down-throttling, and tracking pause protection.
+  - Top bar status chip ("Paper: Following / Searching / Paused / Off"), View sheet toggles (Lock on/off, Freeze paper, Sensitivity, Re-align), non-blocking banners ("Paper moved? / Paper found"), and debug panel with quad outlines (cyan detected, yellow predicted) and "Simulate shift (2cm)" test button.
