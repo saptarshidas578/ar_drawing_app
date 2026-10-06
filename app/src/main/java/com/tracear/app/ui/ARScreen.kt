@@ -71,12 +71,15 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import android.media.Image
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
@@ -96,18 +99,27 @@ import com.tracear.app.ar.ImageLineExtractor
 import com.tracear.app.ar.LineColorOption
 import com.tracear.app.ar.LinesOnlyState
 import com.tracear.app.ar.MathUtils
+import com.tracear.app.ar.PaperBannerType
 import com.tracear.app.ar.PaperDetector
+import com.tracear.app.ar.PaperLockState
 import com.tracear.app.ar.PaperMath
 import com.tracear.app.ar.PaperPreset
+import com.tracear.app.ar.PaperSensitivity
+import com.tracear.app.ar.PaperTracker
+import com.tracear.app.ar.PaperTrackingStatus
 import com.tracear.app.ar.PoseFilter
 import com.tracear.app.ar.RayPlaneResult
+import com.tracear.app.ar.RigidTransform2D
 import com.tracear.app.ar.ScanQuality
 import com.tracear.app.ar.SmoothingMode
 import com.tracear.app.ar.SurfaceState
 import com.tracear.app.ar.TransformSnapshot
 import com.tracear.app.ar.TransformUndoManager
 import com.tracear.app.ar.Vector3f
+import com.tracear.app.ar.IntrinsicsData
 import com.tracear.app.ar.createTracingOverlayNode
+import org.opencv.core.CvType
+import org.opencv.core.Mat
 import com.tracear.app.data.NormalizedCrop
 import com.tracear.app.data.NormalizedTransform
 import com.tracear.app.data.ProjectData
@@ -229,6 +241,10 @@ fun ARScreen(
         }
     }
     val paperDetector = remember { PaperDetector() }
+    val paperLockState = remember { PaperLockState(context) }
+    val paperTracker = remember { PaperTracker() }
+    val isProcessingTrackerCycle = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+    val powerManager = remember { context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager }
 
     // --- Overlay Smoothing (Off / Low / High) ---
     var smoothingMode by remember {
@@ -279,6 +295,37 @@ fun ARScreen(
 
     val (paperWidthMeters, paperHeightMeters) = remember(calibration.localCorners) {
         PaperMath.calculatePaperDimensions(calibration.localCorners)
+    }
+
+    val effectiveCorners = remember(calibration.localCorners.toList(), paperLockState.currentPose, paperLockState.isEnabled) {
+        paperLockState.computeEffectiveCorners(calibration.localCorners)
+    }
+
+    fun realignPaper() {
+        val detected = paperLockState.detectedQuadOnPlane
+        if (detected != null && detected.size == 4) {
+            val est = RigidTransform2D.estimateFromCorrespondingPoints(calibration.localCorners, detected)
+            if (est != null) {
+                paperLockState.currentPose = est.paperFrame
+                paperLockState.bannerType = PaperBannerType.NONE
+                Toast.makeText(context, "Paper realigned! ✓", Toast.LENGTH_SHORT).show()
+                return
+            }
+        }
+        paperLockState.resetToIdentity()
+        if (calibration.localCorners.size == 4) {
+            paperTracker.initBaseline(calibration.localCorners)
+        }
+        Toast.makeText(context, "Paper lock reset to baseline", Toast.LENGTH_SHORT).show()
+    }
+
+    var lastTrackerCycleTime by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(calibration.isCalibrated) {
+        if (calibration.isCalibrated && calibration.localCorners.size == 4) {
+            paperTracker.initBaseline(calibration.localCorners)
+            paperLockState.resetToIdentity()
+        }
     }
 
     val transformUndoManager = remember {
@@ -504,7 +551,7 @@ fun ARScreen(
             gridState.activeCell = 0
         }
 
-        val sorted = MathUtils.sortCornersClockwise(calibration.localCorners)
+        val sorted = MathUtils.sortCornersClockwise(effectiveCorners)
         val worldCorners = sorted.map { localToWorld(anchor.pose, it) }
 
         val s0 = sv.cameraNode.worldToScreenPoint(Vector3(worldCorners[0].x, worldCorners[0].y, worldCorners[0].z))
@@ -544,7 +591,7 @@ fun ARScreen(
         val anchor = calibration.surfaceAnchor ?: return
         if (!calibration.isCalibrated || !gridState.isEnabled) return
 
-        val sorted = MathUtils.sortCornersClockwise(calibration.localCorners)
+        val sorted = MathUtils.sortCornersClockwise(effectiveCorners)
         val worldCorners = sorted.map { localToWorld(anchor.pose, it) }
 
         val s0 = sv.cameraNode.worldToScreenPoint(Vector3(worldCorners[0].x, worldCorners[0].y, worldCorners[0].z))
@@ -912,6 +959,125 @@ fun ARScreen(
                                 detectedPaper = null
                             }
 
+                            // 4. Paper Lock Tracking (when calibrated and plane locked)
+                            if (calibration.isCalibrated && surfaceState.isPlaneLocked) {
+                                val anchor = calibration.surfaceAnchor
+                                val isArTracking = frame.camera.trackingState == TrackingState.TRACKING
+                                if (!paperLockState.isEnabled) {
+                                    paperLockState.trackingStatus = PaperTrackingStatus.OFF
+                                } else if (!isArTracking || paperLockState.isFrozen) {
+                                    paperLockState.trackingStatus = PaperTrackingStatus.PAUSED
+                                } else if (anchor != null) {
+                                    val now = System.currentTimeMillis()
+                                    val isPowerSave = powerManager?.isPowerSaveMode == true
+                                    val minIntervalMs = if (isPowerSave) 200L else 100L
+
+                                    if (now - lastTrackerCycleTime >= minIntervalMs) {
+                                        if (isProcessingTrackerCycle.compareAndSet(false, true)) {
+                                            lastTrackerCycleTime = now
+                                            val camIntrinsics = try { frame.camera.imageIntrinsics } catch (e: Throwable) { null }
+                                            if (camIntrinsics != null) {
+                                                val f = camIntrinsics.focalLength
+                                                val p = camIntrinsics.principalPoint
+                                                val d = camIntrinsics.imageDimensions
+                                                val intrinsicsData = IntrinsicsData(
+                                                    fx = f[0], fy = f[1], cx = p[0], cy = p[1],
+                                                    width = d[0], height = d[1]
+                                                )
+                                                val camPose = frame.camera.pose
+                                                val camTx = camPose.tx(); val camTy = camPose.ty(); val camTz = camPose.tz()
+                                                val camQx = camPose.qx(); val camQy = camPose.qy(); val camQz = camPose.qz(); val camQw = camPose.qw()
+
+                                                val aPose = anchor.pose
+                                                val aTx = aPose.tx(); val aTy = aPose.ty(); val aTz = aPose.tz()
+                                                val aQx = aPose.qx(); val aQy = aPose.qy(); val aQz = aPose.qz(); val aQw = aPose.qw()
+
+                                                val planePoint = Vector3f(aTx, aTy, aTz)
+                                                val planeNormal = MathUtils.rotateVectorByQuaternion(Vector3f(0f, 1f, 0f), aQx, aQy, aQz, aQw)
+
+                                                var image: Image? = null
+                                                var extractedMat: Mat? = null
+                                                try {
+                                                    image = frame.acquireCameraImage()
+                                                    val yPlane = image.planes[0]
+                                                    val imgW = image.width
+                                                    val imgH = image.height
+                                                    val rowStride = yPlane.rowStride
+                                                    val yBuf = yPlane.buffer
+                                                    val yBytes = ByteArray(yBuf.remaining())
+                                                    yBuf.get(yBytes)
+
+                                                    val fullMat = Mat(imgH, rowStride, CvType.CV_8UC1)
+                                                    fullMat.put(0, 0, yBytes)
+                                                    extractedMat = if (rowStride > imgW) {
+                                                        val sub = fullMat.submat(0, imgH, 0, imgW)
+                                                        val cloned = sub.clone()
+                                                        sub.release()
+                                                        fullMat.release()
+                                                        cloned
+                                                    } else {
+                                                        fullMat
+                                                    }
+                                                } catch (e: Throwable) {
+                                                    extractedMat?.release()
+                                                    extractedMat = null
+                                                } finally {
+                                                    image?.close()
+                                                }
+
+                                                if (extractedMat != null) {
+                                                    val matToProcess = extractedMat
+                                                    val curFrozen = paperLockState.isFrozen
+                                                    val curEnabled = paperLockState.isEnabled
+                                                    val curSens = paperLockState.sensitivity
+                                                    scope.launch(Dispatchers.Default) {
+                                                        try {
+                                                            if (!paperTracker.isTemplateReady) {
+                                                                paperTracker.captureTemplate(
+                                                                    grayMat = matToProcess,
+                                                                    intrinsics = intrinsicsData,
+                                                                    camPoseTx = camTx, camPoseTy = camTy, camPoseTz = camTz,
+                                                                    camQx = camQx, camQy = camQy, camQz = camQz, camQw = camQw,
+                                                                    anchorTx = aTx, anchorTy = aTy, anchorTz = aTz,
+                                                                    anchorQx = aQx, anchorQy = aQy, anchorQz = aQz, anchorQw = aQw
+                                                                )
+                                                            }
+                                                            val result = paperTracker.processCycle(
+                                                                grayMat = matToProcess,
+                                                                intrinsics = intrinsicsData,
+                                                                camPoseTx = camTx, camPoseTy = camTy, camPoseTz = camTz,
+                                                                camQx = camQx, camQy = camQy, camQz = camQz, camQw = camQw,
+                                                                anchorTx = aTx, anchorTy = aTy, anchorTz = aTz,
+                                                                anchorQx = aQx, anchorQy = aQy, anchorQz = aQz, anchorQw = aQw,
+                                                                planePoint = planePoint,
+                                                                planeNormal = planeNormal,
+                                                                isTracking = isArTracking,
+                                                                isFrozen = curFrozen,
+                                                                isEnabled = curEnabled,
+                                                                sensitivity = curSens,
+                                                                nowMs = System.currentTimeMillis()
+                                                            )
+                                                            withContext(Dispatchers.Main) {
+                                                                paperLockState.updateFromResult(result)
+                                                            }
+                                                        } catch (e: Throwable) {
+                                                            Log.e("TraceAR", "PaperTracker error: ${e.message}", e)
+                                                        } finally {
+                                                            matToProcess.release()
+                                                            isProcessingTrackerCycle.set(false)
+                                                        }
+                                                    }
+                                                } else {
+                                                    isProcessingTrackerCycle.set(false)
+                                                }
+                                            } else {
+                                                isProcessingTrackerCycle.set(false)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
                             // Count detected planes for debug panel
                             val allPlanes = session.getAllTrackables(Plane::class.java)
                             surfaceState.detectedPlaneCount = allPlanes.size
@@ -973,7 +1139,8 @@ fun ARScreen(
                             poseFilter = poseFilter,
                             transform = transform,
                             crop = crop,
-                            isRulerEnabled = isRulerEnabled
+                            isRulerEnabled = isRulerEnabled,
+                            paperLockState = paperLockState
                         )
                         if (overlayNode != null) {
                             sceneView.addChildNode(overlayNode)
@@ -1003,6 +1170,61 @@ fun ARScreen(
                 // Draw corner dots
                 paper.screenCorners.forEach { pt ->
                     drawCircle(color = strokeColor, radius = 10f, center = pt)
+                }
+            }
+        }
+
+        // ===== Paper Lock Debug Quad Outline (Cyan: Detected, Yellow: Predicted) =====
+        if ((surfaceState.isDebugPanelVisible || debugMode) && calibration.isCalibrated) {
+            val sv = sceneViewRef
+            val anchor = calibration.surfaceAnchor
+            if (sv != null && anchor != null) {
+                val detectedQuad = paperLockState.detectedQuadOnPlane
+                val predictedQuad = paperLockState.predictedQuadOnPlane
+
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    // Draw detected quad in Cyan
+                    if (detectedQuad != null && detectedQuad.size == 4) {
+                        try {
+                            val screenPts = detectedQuad.map { pt ->
+                                val worldPt = localToWorld(anchor.pose, pt)
+                                val sp = sv.cameraNode.worldToScreenPoint(Vector3(worldPt.x, worldPt.y, worldPt.z))
+                                Offset(sp.x, sp.y)
+                            }
+                            val path = Path().apply {
+                                moveTo(screenPts[0].x, screenPts[0].y)
+                                lineTo(screenPts[1].x, screenPts[1].y)
+                                lineTo(screenPts[2].x, screenPts[2].y)
+                                lineTo(screenPts[3].x, screenPts[3].y)
+                                close()
+                            }
+                            drawPath(path, color = Color(0xFF00E5FF), style = Stroke(width = 4f, cap = StrokeCap.Round))
+                            screenPts.forEach { drawCircle(Color(0xFF00E5FF), radius = 6f, center = it) }
+                        } catch (ignored: Throwable) {}
+                    }
+
+                    // Draw predicted quad in Yellow dashed lines
+                    if (predictedQuad != null && predictedQuad.size == 4) {
+                        try {
+                            val screenPts = predictedQuad.map { pt ->
+                                val worldPt = localToWorld(anchor.pose, pt)
+                                val sp = sv.cameraNode.worldToScreenPoint(Vector3(worldPt.x, worldPt.y, worldPt.z))
+                                Offset(sp.x, sp.y)
+                            }
+                            val path = Path().apply {
+                                moveTo(screenPts[0].x, screenPts[0].y)
+                                lineTo(screenPts[1].x, screenPts[1].y)
+                                lineTo(screenPts[2].x, screenPts[2].y)
+                                lineTo(screenPts[3].x, screenPts[3].y)
+                                close()
+                            }
+                            drawPath(
+                                path,
+                                color = Color(0xFFFFD600),
+                                style = Stroke(width = 3f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f))
+                            )
+                        } catch (ignored: Throwable) {}
+                    }
                 }
             }
         }
@@ -1133,7 +1355,7 @@ fun ARScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "💡 Tip: Place paper on a textured surface, improve lighting, and move phone slowly.",
+                            text = "💡 Tip: Place paper on a textured surface, improve lighting, and move phone slowly.\nThe overlay follows the paper if it moves. Taping the paper still gives the best result.",
                             color = Color(0xFFFFD600),
                             fontSize = 11.sp,
                             textAlign = TextAlign.Center
@@ -1287,8 +1509,34 @@ fun ARScreen(
                 onToggleLeftHanded = { tracingUi.updateLeftHanded(it) },
                 isAutoLineColor = tracingUi.isAutoLineColor,
                 onToggleAutoLineColor = { tracingUi.updateAutoLineColor(it) },
+                paperTrackingStatus = if (paperLockState.isEnabled) paperLockState.trackingStatus else com.tracear.app.ar.PaperTrackingStatus.OFF,
+                onRealignPaper = { realignPaper() },
                 modifier = Modifier.align(Alignment.TopCenter)
             )
+        }
+
+        // ===== Paper Lock Non-Blocking Banners =====
+        if (calibration.isCalibrated && paperLockState.isEnabled && !tracingUi.isFocusMode && paperLockState.bannerType != PaperBannerType.NONE) {
+            val isFound = paperLockState.bannerType == PaperBannerType.PAPER_FOUND
+            val bannerBorderColor = if (isFound) Color(0xFF3FB950) else Color(0xFFD29922)
+            val bannerTextColor = if (isFound) Color(0xFF3FB950) else Color(0xFFFFD600)
+            val bannerText = if (isFound) "✨ Paper found. Re-align here?" else "⚠️ Paper moved? Tap to re-align."
+
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 60.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xF01C2128))
+                    .border(1.dp, bannerBorderColor, RoundedCornerShape(12.dp))
+                    .clickable { realignPaper() }
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(bannerText, color = bannerTextColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text("🔄 Tap", color = Color.White, fontSize = 11.sp, textDecoration = TextDecoration.Underline)
+            }
         }
 
         // ===== Debug Panel Overlay =====
@@ -1310,6 +1558,29 @@ fun ARScreen(
                 Text("Point cloud: ${surfaceState.totalPointCloudCount} pts", color = Color.White, fontSize = 10.sp)
                 Text("Depth mode: ${surfaceState.isDepthModeEnabled}", color = Color.White, fontSize = 10.sp)
                 Text("Last ray: ${surfaceState.lastRayIntersectionResult}", color = Color(0xFF7EE787), fontSize = 9.sp)
+
+                if (calibration.isCalibrated) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("📄 Paper Lock: ${paperLockState.trackingStatus}", color = Color(0xFF58A6FF), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Text("Confidence: %.0f%%".format(paperLockState.confidence * 100f), color = Color.White, fontSize = 10.sp)
+                    Text("Residual: %.1f mm".format(paperLockState.residualMm), color = Color.White, fontSize = 10.sp)
+                    Text("Rate: %.1f Hz (${paperLockState.cycleDurationMs} ms)".format(paperLockState.updateRateHz), color = Color.White, fontSize = 10.sp)
+
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Button(
+                        onClick = {
+                            paperTracker.simulatePaperShift(0.02f, 0f, 0f)
+                            paperLockState.currentPose = paperTracker.lastResult.paperFrame
+                            Toast.makeText(context, "Simulated 2cm paper shift!", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.height(26.dp),
+                        shape = RoundedCornerShape(6.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8957E5)),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                    ) {
+                        Text("⚡ Simulate shift (2cm)", fontSize = 9.sp, color = Color.White)
+                    }
+                }
             }
         }
 
@@ -1393,6 +1664,8 @@ fun ARScreen(
                             paperPreset = preset
                             val snapped = PaperMath.snapCornersToPreset(calibration.localCorners, targetW, targetH)
                             calibration.setAllCorners(snapped)
+                            paperTracker.initBaseline(snapped)
+                            paperLockState.resetToIdentity()
                             Toast.makeText(context, "Snapped corners to ${preset.displayName}!", Toast.LENGTH_SHORT).show()
                         },
                         canUndoSnap = (previousCornersBeforeSnap != null),
@@ -1400,6 +1673,8 @@ fun ARScreen(
                             val prev = previousCornersBeforeSnap
                             if (prev != null) {
                                 calibration.setAllCorners(prev)
+                                paperTracker.initBaseline(prev)
+                                paperLockState.resetToIdentity()
                                 previousCornersBeforeSnap = null
                                 Toast.makeText(context, "Restored original corners", Toast.LENGTH_SHORT).show()
                             }
@@ -1456,6 +1731,13 @@ fun ARScreen(
                         onToggleFullBrightness = { setFullBrightness(!isFullBrightness) },
                         debugMode = debugMode,
                         onToggleDebugMode = { debugMode = !debugMode },
+                        isPaperLockEnabled = paperLockState.isEnabled,
+                        onTogglePaperLock = { paperLockState.isEnabled = it },
+                        isPaperFrozen = paperLockState.isFrozen,
+                        onToggleFreezePaper = { paperLockState.isFrozen = it },
+                        paperSensitivity = paperLockState.sensitivity,
+                        onPaperSensitivityChange = { paperLockState.sensitivity = it },
+                        onRealignPaper = { realignPaper() },
                         isLandscape = isLandscape,
                         modifier = Modifier
                             .align(
@@ -1537,6 +1819,8 @@ fun ARScreen(
                         gridState.reset()
                         zoomState.reset()
                         paperDetector.reset()
+                        paperLockState.resetToIdentity()
+                        paperTracker.initBaseline(emptyList())
                         transform = NormalizedTransform()
                         tracingUi.closeSheet()
                         showRecalibDialog = false

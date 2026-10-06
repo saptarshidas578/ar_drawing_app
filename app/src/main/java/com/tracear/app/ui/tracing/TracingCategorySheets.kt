@@ -126,6 +126,14 @@ fun TracingCategorySheet(
     onToggleFullBrightness: () -> Unit,
     debugMode: Boolean,
     onToggleDebugMode: () -> Unit,
+    // Paper Lock
+    isPaperLockEnabled: Boolean = true,
+    onTogglePaperLock: (Boolean) -> Unit = {},
+    isPaperFrozen: Boolean = false,
+    onToggleFreezePaper: (Boolean) -> Unit = {},
+    paperSensitivity: com.tracear.app.ar.PaperSensitivity = com.tracear.app.ar.PaperSensitivity.NORMAL,
+    onPaperSensitivityChange: (com.tracear.app.ar.PaperSensitivity) -> Unit = {},
+    onRealignPaper: () -> Unit = {},
     isLandscape: Boolean = false,
     modifier: Modifier = Modifier
 ) {
@@ -316,6 +324,25 @@ fun TracingCategorySheet(
                         onToggleDebugMode = {
                             onInteract()
                             onToggleDebugMode()
+                        },
+                        isPaperLockEnabled = isPaperLockEnabled,
+                        onTogglePaperLock = {
+                            onInteract()
+                            onTogglePaperLock(it)
+                        },
+                        isPaperFrozen = isPaperFrozen,
+                        onToggleFreezePaper = {
+                            onInteract()
+                            onToggleFreezePaper(it)
+                        },
+                        paperSensitivity = paperSensitivity,
+                        onPaperSensitivityChange = {
+                            onInteract()
+                            onPaperSensitivityChange(it)
+                        },
+                        onRealignPaper = {
+                            onInteract()
+                            onRealignPaper()
                         }
                     )
                 }
@@ -1479,7 +1506,14 @@ private fun ViewSheetContent(
     isFullBrightness: Boolean,
     onToggleFullBrightness: () -> Unit,
     debugMode: Boolean,
-    onToggleDebugMode: () -> Unit
+    onToggleDebugMode: () -> Unit,
+    isPaperLockEnabled: Boolean = true,
+    onTogglePaperLock: (Boolean) -> Unit = {},
+    isPaperFrozen: Boolean = false,
+    onToggleFreezePaper: (Boolean) -> Unit = {},
+    paperSensitivity: com.tracear.app.ar.PaperSensitivity = com.tracear.app.ar.PaperSensitivity.NORMAL,
+    onPaperSensitivityChange: (com.tracear.app.ar.PaperSensitivity) -> Unit = {},
+    onRealignPaper: () -> Unit = {}
 ) {
     // Fit Mode row
     Row(
@@ -1576,6 +1610,81 @@ private fun ViewSheetContent(
             contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
         ) {
             Text(if (debugMode) "🔲 Wire ON" else "🔲 Wireframe", fontSize = 11.sp, color = Color.White)
+        }
+    }
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    // ── Paper Lock Section ─────────────────────────────────────
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text("📄 Paper Lock", color = Color(0xFF58A6FF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Button(
+                onClick = { onTogglePaperLock(!isPaperLockEnabled) },
+                modifier = Modifier.height(28.dp),
+                shape = RoundedCornerShape(6.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isPaperLockEnabled) Color(0xFF238636) else Color(0xFF21262D)
+                ),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+            ) {
+                Text(if (isPaperLockEnabled) "Lock: ON" else "Lock: OFF", fontSize = 10.sp, color = Color.White)
+            }
+
+            if (isPaperLockEnabled) {
+                Button(
+                    onClick = { onToggleFreezePaper(!isPaperFrozen) },
+                    modifier = Modifier.height(28.dp),
+                    shape = RoundedCornerShape(6.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isPaperFrozen) Color(0xFFD29922) else Color(0xFF21262D)
+                    ),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                ) {
+                    Text(if (isPaperFrozen) "❄️ Frozen" else "Freeze", fontSize = 10.sp, color = Color.White)
+                }
+            }
+        }
+    }
+
+    if (isPaperLockEnabled) {
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // Sensitivity selector & Re-align button
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            com.tracear.app.ar.PaperSensitivity.entries.forEach { sens ->
+                val isSelected = paperSensitivity == sens
+                Button(
+                    onClick = { onPaperSensitivityChange(sens) },
+                    modifier = Modifier.weight(1f).height(28.dp),
+                    shape = RoundedCornerShape(6.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isSelected) Color(0xFF1F6FEB) else Color(0xFF21262D)
+                    ),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                ) {
+                    Text(sens.name.lowercase().replaceFirstChar { it.uppercase() }, fontSize = 10.sp, color = Color.White)
+                }
+            }
+
+            Button(
+                onClick = onRealignPaper,
+                modifier = Modifier.height(28.dp),
+                shape = RoundedCornerShape(6.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF30363D)),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+            ) {
+                Text("🔄 Re-align", fontSize = 10.sp, color = Color(0xFF58A6FF), fontWeight = FontWeight.Bold)
+            }
         }
     }
 }

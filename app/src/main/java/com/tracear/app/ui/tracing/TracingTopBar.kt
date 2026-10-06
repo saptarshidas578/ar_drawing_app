@@ -61,6 +61,8 @@ fun TracingTopBar(
     onToggleLeftHanded: (Boolean) -> Unit,
     isAutoLineColor: Boolean,
     onToggleAutoLineColor: (Boolean) -> Unit,
+    paperTrackingStatus: com.tracear.app.ar.PaperTrackingStatus? = null,
+    onRealignPaper: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
@@ -137,7 +139,41 @@ fun TracingTopBar(
             }
         }
 
-        Spacer(modifier = Modifier.width(6.dp))
+        // --- Center: Paper Lock Status Chip (if available) ---
+        if (paperTrackingStatus != null) {
+            val (paperColor, paperText) = when (paperTrackingStatus) {
+                com.tracear.app.ar.PaperTrackingStatus.FOLLOWING -> Color(0xFF3FB950) to "Paper: Following"
+                com.tracear.app.ar.PaperTrackingStatus.SEARCHING -> Color(0xFFD29922) to "Paper: Searching"
+                com.tracear.app.ar.PaperTrackingStatus.PAUSED -> Color(0xFF8B949E) to "Paper: Paused"
+                com.tracear.app.ar.PaperTrackingStatus.OFF -> Color(0x668B949E) to "Paper: Off"
+            }
+
+            Spacer(modifier = Modifier.width(4.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0x99000000))
+                    .border(1.dp, paperColor.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 7.dp, vertical = 4.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(7.dp)
+                        .clip(CircleShape)
+                        .background(paperColor)
+                )
+                Text(
+                    text = paperText,
+                    color = Color.White,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.width(4.dp))
 
         // --- Right: Focus button & Menu (⋮) ---
         Row(
@@ -173,6 +209,15 @@ fun TracingTopBar(
                             onSaveProject()
                         }
                     )
+                    if (onRealignPaper != null) {
+                        DropdownMenuItem(
+                            text = { Text("🔄  Re-align Paper", color = Color.White, fontSize = 13.sp) },
+                            onClick = {
+                                menuExpanded = false
+                                onRealignPaper()
+                            }
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text("🎯  Re-calibrate Paper", color = Color.White, fontSize = 13.sp) },
                         onClick = {

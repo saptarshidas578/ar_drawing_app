@@ -16,6 +16,7 @@ import com.google.android.filament.Texture
 import com.google.android.filament.TextureSampler
 import com.google.android.filament.VertexBuffer
 import com.google.ar.core.Anchor
+import com.google.ar.core.Pose
 import io.github.sceneview.ar.node.AnchorNode
 import io.github.sceneview.loaders.MaterialLoader
 import io.github.sceneview.node.MeshNode
@@ -53,7 +54,8 @@ fun createTracingOverlayNode(
     poseFilter: PoseFilter? = null,
     transform: com.tracear.app.data.NormalizedTransform? = null,
     crop: com.tracear.app.data.NormalizedCrop? = null,
-    isRulerEnabled: Boolean = false
+    isRulerEnabled: Boolean = false,
+    paperLockState: PaperLockState? = null
 ): AnchorNode? {
     if (localCorners.size < 4) return null
 
@@ -169,16 +171,32 @@ fun createTracingOverlayNode(
         val anchorNode = AnchorNode(engine = engine, anchor = surfaceAnchor)
         anchorNode.addChildNode(meshNode)
 
-        if (poseFilter != null && poseFilter.mode != SmoothingMode.OFF) {
-            anchorNode.updateAnchorPose = false
-            val initialSmoothed = poseFilter.filter(surfaceAnchor.pose, System.nanoTime())
-            anchorNode.pose = initialSmoothed
+        val centroid = PaperFrame.calculateCentroid(sorted)
+        val hasPoseFilter = poseFilter != null && poseFilter.mode != SmoothingMode.OFF
+        val hasPaperLock = paperLockState != null
 
-            anchorNode.onUpdated = { anchor ->
-                if (poseFilter.mode != SmoothingMode.OFF) {
-                    val smoothed = poseFilter.filter(anchor.pose, System.nanoTime())
-                    anchorNode.pose = smoothed
+        if (hasPoseFilter || hasPaperLock) {
+            anchorNode.updateAnchorPose = false
+
+            fun computeCurrentPose(anchor: Anchor): Pose {
+                val baseAnchorPose = if (hasPoseFilter) {
+                    poseFilter!!.filter(anchor.pose, System.nanoTime())
+                } else {
+                    anchor.pose
                 }
+
+                val frame = paperLockState?.currentPose
+                return if (paperLockState != null && paperLockState.isEnabled && frame != null && !frame.isIdentity()) {
+                    val paperLocal = computePaperLocalPose(frame, centroid)
+                    baseAnchorPose.compose(paperLocal)
+                } else {
+                    baseAnchorPose
+                }
+            }
+
+            anchorNode.pose = computeCurrentPose(surfaceAnchor)
+            anchorNode.onUpdated = { anchor ->
+                anchorNode.pose = computeCurrentPose(anchor)
             }
         } else {
             anchorNode.updateAnchorPose = true
@@ -189,6 +207,15 @@ fun createTracingOverlayNode(
         Log.e("TraceAR", "createTracingOverlayNode failed: ${e.message}", e)
         null
     }
+}
+
+private fun computePaperLocalPose(paperFrame: PaperFrame, centroid: Vector3f): Pose {
+    val tMinus = Pose.makeTranslation(-centroid.x, -centroid.y, -centroid.z)
+    val radHalf = Math.toRadians((paperFrame.rotationDegrees / 2.0)).toFloat()
+    val rYaw = Pose.makeRotation(0f, kotlin.math.sin(radHalf), 0f, kotlin.math.cos(radHalf))
+    val tPlus = Pose.makeTranslation(centroid.x, centroid.y, centroid.z)
+    val tDelta = Pose.makeTranslation(paperFrame.dx, 0f, paperFrame.dz)
+    return tDelta.compose(tPlus).compose(rYaw).compose(tMinus)
 }
 
 // ── Helpers ──────────────────────────────────────────────────

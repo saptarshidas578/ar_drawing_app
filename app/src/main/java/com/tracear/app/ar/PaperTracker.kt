@@ -94,6 +94,10 @@ class PaperTracker {
     )
         private set
 
+    val isTemplateReady: Boolean
+        get() = templateMat != null && !templateMat!!.empty()
+
+
     /**
      * Initializes baseline paper corners when user or auto-detection calibrates.
      */
@@ -585,15 +589,15 @@ class PaperTracker {
         return MathUtils.rotateVectorByQuaternion(diff, -anchorQx, -anchorQy, -anchorQz, anchorQw)
     }
 
-    fun simulatePaperShift(shiftMetersX: Float = 0.02f, shiftMetersZ: Float = 0.0f) {
+    fun simulatePaperShift(shiftMetersX: Float = 0.02f, shiftMetersZ: Float = 0.0f, rotationDeg: Float = 0.0f) {
         val current = filter.currentPose
-        filter.reset(
-            pose = PaperFrame(
-                dx = current.dx + shiftMetersX,
-                dz = current.dz + shiftMetersZ,
-                rotationDegrees = current.rotationDegrees
-            )
+        val shifted = PaperFrame(
+            dx = current.dx + shiftMetersX,
+            dz = current.dz + shiftMetersZ,
+            rotationDegrees = current.rotationDegrees + rotationDeg
         )
+        filter.reset(pose = shifted)
+        lastResult = lastResult.copy(paperFrame = shifted)
     }
 
     fun releaseTemplate() {
