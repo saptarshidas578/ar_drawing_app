@@ -2,15 +2,18 @@ package com.tracear.app.ui
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.provider.Settings
 import android.util.Log
 import android.view.MotionEvent
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import com.tracear.app.data.AppSettings
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -155,6 +158,9 @@ import kotlin.math.sqrt
 fun ARScreen(
     project: ProjectData? = null,
     imageUri: Uri? = null,
+    settings: AppSettings? = null,
+    onOpenSettings: (() -> Unit)? = null,
+    onOpenTutorial: (() -> Unit)? = null,
     onChangeImage: (() -> Unit)? = null,
     onBack: () -> Unit
 ) {
@@ -162,6 +168,24 @@ fun ARScreen(
     val repository = remember { ProjectRepository(context) }
     val scope = rememberCoroutineScope()
     var currentProject by remember { mutableStateOf(project) }
+
+    // --- ARCore Availability Check ---
+    val arCoreAvailability = remember {
+        try {
+            com.google.ar.core.ArCoreApk.getInstance().checkAvailability(context)
+        } catch (e: Throwable) {
+            com.google.ar.core.ArCoreApk.Availability.SUPPORTED_INSTALLED
+        }
+    }
+
+    if (arCoreAvailability == com.google.ar.core.ArCoreApk.Availability.UNSUPPORTED_DEVICE_NOT_CAPABLE) {
+        ARCoreUnavailableScreen(isInstallRequired = false, onBack = onBack)
+        return
+    }
+    if (arCoreAvailability == com.google.ar.core.ArCoreApk.Availability.SUPPORTED_NOT_INSTALLED) {
+        ARCoreUnavailableScreen(isInstallRequired = true, onBack = onBack)
+        return
+    }
 
     // --- Camera Permission ---
     val cameraPermission = rememberPermissionState(Manifest.permission.CAMERA)
@@ -181,8 +205,27 @@ fun ARScreen(
         return
     }
 
-    // --- Light & Comfort (Torch & Screen Brightness) ---
+    // --- Screen Keep-On & Dimming Management ---
     val activity = LocalContext.current as? android.app.Activity
+    DisposableEffect(settings?.isKeepScreenOn) {
+        val keepOn = settings?.isKeepScreenOn ?: true
+        if (keepOn) {
+            activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        onDispose {
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            val window = activity?.window
+            if (window != null) {
+                val lp = window.attributes
+                lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                window.attributes = lp
+            }
+        }
+    }
+
+    // --- Light & Comfort (Torch & Screen Brightness) ---
     var arSessionRef by remember { mutableStateOf<com.google.ar.core.Session?>(null) }
     var isTorchOn by remember { mutableStateOf(false) }
     var isTorchSupported by remember { mutableStateOf(false) }
@@ -227,6 +270,9 @@ fun ARScreen(
                 rows = currentProject!!.gridRows
                 doneCells.clear()
                 doneCells.addAll(currentProject!!.doneCells)
+            } else if (settings != null) {
+                cols = settings.defaultGridSize
+                rows = settings.defaultGridSize
             }
         }
     }
@@ -237,6 +283,8 @@ fun ARScreen(
                 edgeSensitivity = currentProject!!.edgeSensitivity
                 lineThickness = currentProject!!.lineThickness
                 selectedColorOption = LineColorOption.entries.find { it.name == currentProject!!.lineColorName } ?: LineColorOption.CYAN
+            } else if (settings != null) {
+                selectedColorOption = settings.defaultLineColor
             }
         }
     }
@@ -245,11 +293,13 @@ fun ARScreen(
     val paperTracker = remember { PaperTracker() }
     val isProcessingTrackerCycle = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
     val powerManager = remember { context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager }
+    var lastPaperDetectionTime by remember { mutableLongStateOf(0L) }
 
     // --- Overlay Smoothing (Off / Low / High) ---
     var smoothingMode by remember {
         mutableStateOf(
-            SmoothingMode.entries.find { it.name == currentProject?.smoothingMode } ?: SmoothingMode.LOW
+            SmoothingMode.entries.find { it.name == currentProject?.smoothingMode }
+                ?: (settings?.smoothingMode ?: SmoothingMode.LOW)
         )
     }
     val poseFilter = remember { PoseFilter(smoothingMode) }
@@ -267,21 +317,31 @@ fun ARScreen(
     }
 
     // --- Tracing Settings ---
-    var opacity by remember { mutableFloatStateOf(currentProject?.opacity ?: 0.5f) }
+    var opacity by remember { mutableFloatStateOf(currentProject?.opacity ?: (settings?.defaultOpacity ?: 0.5f)) }
     var isLocked by remember { mutableStateOf(false) }
     var fitMode by remember {
         mutableStateOf(
-            when (currentProject?.fitMode?.uppercase()) {
-                "FIT" -> FitMode.FIT
-                "FILL" -> FitMode.FILL
-                else -> FitMode.STRETCH
+            if (currentProject != null) {
+                when (currentProject!!.fitMode.uppercase()) {
+                    "FIT" -> FitMode.FIT
+                    "FILL" -> FitMode.FILL
+                    else -> FitMode.STRETCH
+                }
+            } else {
+                settings?.defaultFitMode ?: FitMode.STRETCH
             }
         )
     }
     var debugMode by remember { mutableStateOf(false) }
 
     // --- UI State & Transform ---
-    val tracingUi = remember { TracingUiState(context) }
+    val tracingUi = remember {
+        TracingUiState(context).apply {
+            if (settings != null) {
+                isLeftHanded = settings.isLeftHanded
+            }
+        }
+    }
     var transform by remember { mutableStateOf(currentProject?.transform ?: NormalizedTransform()) }
     var smoothedAmbientIntensity by remember { mutableFloatStateOf(0.5f) }
     var lastAutoColorChangeTime by remember { mutableLongStateOf(0L) }
@@ -953,8 +1013,13 @@ fun ARScreen(
 
                             // 3. OpenCV Paper Auto-Detection (when locked but not yet calibrated)
                             if (surfaceState.isPlaneLocked && !calibration.isCalibrated) {
-                                val det = paperDetector.processFrame(frame, width, height)
-                                detectedPaper = det
+                                val isPowerSave = powerManager?.isPowerSaveMode == true || (settings?.isBatterySaver == true)
+                                val now = System.currentTimeMillis()
+                                if (!isPowerSave || now - lastPaperDetectionTime >= 250L) {
+                                    lastPaperDetectionTime = now
+                                    val det = paperDetector.processFrame(frame, width, height)
+                                    detectedPaper = det
+                                }
                             } else {
                                 detectedPaper = null
                             }
@@ -969,8 +1034,8 @@ fun ARScreen(
                                     paperLockState.trackingStatus = PaperTrackingStatus.PAUSED
                                 } else if (anchor != null) {
                                     val now = System.currentTimeMillis()
-                                    val isPowerSave = powerManager?.isPowerSaveMode == true
-                                    val minIntervalMs = if (isPowerSave) 200L else 100L
+                                    val isPowerSave = powerManager?.isPowerSaveMode == true || (settings?.isBatterySaver == true)
+                                    val minIntervalMs = if (isPowerSave) 250L else 100L
 
                                     if (now - lastTrackerCycleTime >= minIntervalMs) {
                                         if (isProcessingTrackerCycle.compareAndSet(false, true)) {
@@ -1292,14 +1357,16 @@ fun ARScreen(
 
                 val statusMessage = when {
                     surfaceState.trackingFailureReason == TrackingFailureReason.INSUFFICIENT_LIGHT ->
-                        "☀️ Not enough light — try a brighter area"
+                        "☀️ Too dark — turn on torch or improve lighting"
                     surfaceState.trackingFailureReason == TrackingFailureReason.EXCESSIVE_MOTION ->
-                        "🐌 Moving too fast — slow down"
+                        "🐌 Moving too fast — slow down phone"
                     surfaceState.trackingFailureReason == TrackingFailureReason.INSUFFICIENT_FEATURES ->
-                        "🔍 Not enough detail — point at a textured surface"
+                        "🔍 Low texture — point camera at paper"
+                    isTrackingLost ->
+                        "⚠️ Tracking lost — point camera at paper"
                     !surfaceState.isPlaneLocked ->
                         if (surfaceState.isCandidateValid) "✅ Table surface found! Tap 'Use this surface' below"
-                        else "🎯 Point crosshair at the paper and move phone slowly"
+                        else "🎯 Point crosshair at paper and move phone slowly"
                     !calibration.isCalibrated -> {
                         val cornerLabels = listOf("top-left", "top-right", "bottom-right", "bottom-left")
                         val nextCorner = calibration.cornerCount
@@ -1511,6 +1578,8 @@ fun ARScreen(
                 onToggleAutoLineColor = { tracingUi.updateAutoLineColor(it) },
                 paperTrackingStatus = if (paperLockState.isEnabled) paperLockState.trackingStatus else com.tracear.app.ar.PaperTrackingStatus.OFF,
                 onRealignPaper = { realignPaper() },
+                onOpenSettings = onOpenSettings,
+                onOpenTutorial = onOpenTutorial,
                 modifier = Modifier.align(Alignment.TopCenter)
             )
         }
@@ -1536,6 +1605,28 @@ fun ARScreen(
             ) {
                 Text(bannerText, color = bannerTextColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 Text("🔄 Tap", color = Color.White, fontSize = 11.sp, textDecoration = TextDecoration.Underline)
+            }
+        }
+
+        // ===== Tracking Lost Floating Banner (When Calibrated) =====
+        if (calibration.isCalibrated && !tracingUi.isFocusMode && isTrackingLost && paperLockState.bannerType == PaperBannerType.NONE) {
+            val bannerText = when (failureReason) {
+                TrackingFailureReason.INSUFFICIENT_LIGHT -> "☀️ Too dark — turn on torch or brighten room"
+                TrackingFailureReason.EXCESSIVE_MOTION -> "🐌 Moving too fast — hold phone steady"
+                else -> "⚠️ Tracking lost — point camera at paper"
+            }
+
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 60.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xF01C2128))
+                    .border(1.dp, Color(0xFFDA3633), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(bannerText, color = Color(0xFFFF7B72), fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
 
@@ -1912,6 +2003,7 @@ fun PermissionScreen(
     onRequestPermission: () -> Unit,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -1933,7 +2025,7 @@ fun PermissionScreen(
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = if (isPermanentlyDenied) {
-                    "Camera permission was denied. Please enable it in your phone's Settings > Apps > TraceAR > Permissions."
+                    "Camera permission was denied. Tap 'Open App Settings' below to allow camera access so TraceAR can overlay your drawing."
                 } else {
                     "TraceAR needs camera access to show the AR view and overlay your image on real paper."
                 },
@@ -1951,6 +2043,24 @@ fun PermissionScreen(
                 ) {
                     Text("Grant Permission", color = Color.White)
                 }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            Button(
+                onClick = {
+                    try {
+                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.fromParts("package", context.packageName, null)
+                        }
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Could not open settings", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1F6FEB)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("⚙️  Open App Settings", color = Color.White)
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -1965,6 +2075,76 @@ fun PermissionScreen(
         }
     }
 }
+
+/**
+ * ARCoreUnavailableScreen — shown when device does not have ARCore installed or supported.
+ */
+@Composable
+fun ARCoreUnavailableScreen(
+    isInstallRequired: Boolean,
+    onBack: () -> Unit
+) {
+    val context = LocalContext.current
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0D1117)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(32.dp)
+        ) {
+            Text(text = "👓", fontSize = 64.sp)
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = if (isInstallRequired) "AR Services Needed" else "AR Not Supported",
+                color = Color.White,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = if (isInstallRequired) {
+                    "Google Play Services for AR is required for 3D surface tracking. Please install or update it from Google Play."
+                } else {
+                    "This device does not support ARCore. Augmented reality tracing requires ARCore-compatible hardware."
+                },
+                color = Color(0xFF8B949E),
+                fontSize = 14.sp,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            if (isInstallRequired) {
+                Button(
+                    onClick = {
+                        try {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.ar.core"))
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=com.google.ar.core"))
+                            context.startActivity(intent)
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF238636)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Install AR Services", color = Color.White)
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+            Button(
+                onClick = onBack,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF30363D)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Go Back", color = Color.White)
+            }
+        }
+    }
+}
+
 
 /**
  * Loads a bitmap from URI scaled up to maxDimension (default 4096) for sharp tracing detail.

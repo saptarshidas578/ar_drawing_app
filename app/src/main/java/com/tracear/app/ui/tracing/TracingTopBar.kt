@@ -63,6 +63,8 @@ fun TracingTopBar(
     onToggleAutoLineColor: (Boolean) -> Unit,
     paperTrackingStatus: com.tracear.app.ar.PaperTrackingStatus? = null,
     onRealignPaper: (() -> Unit)? = null,
+    onOpenSettings: (() -> Unit)? = null,
+    onOpenTutorial: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
@@ -209,6 +211,24 @@ fun TracingTopBar(
                             onSaveProject()
                         }
                     )
+                    if (onOpenSettings != null) {
+                        DropdownMenuItem(
+                            text = { Text("⚙️  Settings", color = Color.White, fontSize = 13.sp) },
+                            onClick = {
+                                menuExpanded = false
+                                onOpenSettings()
+                            }
+                        )
+                    }
+                    if (onOpenTutorial != null) {
+                        DropdownMenuItem(
+                            text = { Text("📖  How to Use", color = Color.White, fontSize = 13.sp) },
+                            onClick = {
+                                menuExpanded = false
+                                onOpenTutorial()
+                            }
+                        )
+                    }
                     if (onRealignPaper != null) {
                         DropdownMenuItem(
                             text = { Text("🔄  Re-align Paper", color = Color.White, fontSize = 13.sp) },

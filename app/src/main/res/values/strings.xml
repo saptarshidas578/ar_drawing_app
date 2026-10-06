@@ -1,0 +1,83 @@
+<resources>
+    <!-- App Identity -->
+    <string name="app_name">TraceAR</string>
+    <string name="app_full_name">TraceAR: AR Drawing &amp; Tracing</string>
+    <string name="app_version">Version 1.0.0</string>
+
+    <!-- Tutorial Steps -->
+    <string name="tutorial_skip">Skip</string>
+    <string name="tutorial_back">Back</string>
+    <string name="tutorial_next">Next</string>
+    <string name="tutorial_get_started">Get Started</string>
+
+    <string name="tutorial_step_1_title">1. Set Up Your Phone Stand</string>
+    <string name="tutorial_step_1_desc">Place your phone on a stand, tripod, or tall mug about 40–60 cm directly above your drawing paper.</string>
+
+    <string name="tutorial_step_2_title">2. Prepare Your Paper &amp; Light</string>
+    <string name="tutorial_step_2_desc">Put your paper on a textured table with good, even lighting so the camera can see paper edges clearly.</string>
+
+    <string name="tutorial_step_3_title">3. Find the Table Surface</string>
+    <string name="tutorial_step_3_desc">Point the camera crosshair at the paper and move your phone slowly side to side until the table is detected.</string>
+
+    <string name="tutorial_step_4_title">4. Lock &amp; Mark Your Paper</string>
+    <string name="tutorial_step_4_desc">Tap \"Use this surface\", then tap the 4 corners of your paper (or tap \"Accept Detected Paper\" when green).</string>
+
+    <string name="tutorial_step_5_title">5. Trace Your Drawing!</string>
+    <string name="tutorial_step_5_desc">Adjust your image scale and opacity, lock it to prevent accidental moves, and trace with your pencil!</string>
+
+    <!-- Friendly Guidance Messages -->
+    <string name="guidance_tracking_lost">Move phone slowly back over the paper</string>
+    <string name="guidance_too_dark">Add more light or turn on torch</string>
+    <string name="guidance_moving_too_fast">Hold phone steady</string>
+    <string name="guidance_low_detail">Point at paper texture or patterned table</string>
+    <string name="guidance_scanning_tips">Tilt phone slightly and move slowly side to side</string>
+    <string name="guidance_surface_found">Table surface found! Tap \"Use this surface\" below</string>
+    <string name="guidance_pointing_crosshair">Point crosshair at paper and move phone slowly</string>
+
+    <!-- Camera Permission & ARCore Fallbacks -->
+    <string name="perm_camera_title">Camera Access Required</string>
+    <string name="perm_camera_desc">TraceAR needs camera access to project your reference image directly onto your paper.</string>
+    <string name="perm_camera_denied_desc">Camera permission is disabled. Tap below to enable Camera permission in your phone\'s Settings.</string>
+    <string name="perm_grant_button">Grant Permission</string>
+    <string name="perm_open_settings_button">Open App Settings</string>
+
+    <string name="arcore_missing_title">ARCore Update Needed</string>
+    <string name="arcore_missing_desc">TraceAR requires Google Play Services for AR to place the drawing overlay onto your table.</string>
+    <string name="arcore_install_button">Install from Play Store</string>
+    <string name="arcore_unsupported_title">Device Not Supported</string>
+    <string name="arcore_unsupported_desc">This device does not support ARCore augmented reality required for tracing on a table.</string>
+
+    <!-- Empty States & Error Dialogs -->
+    <string name="home_empty_title">No Drawings Yet</string>
+    <string name="home_empty_desc">Tap \"+ New Project\" to choose an image and begin your first tracing session.</string>
+    <string name="home_new_project_button">+ New Project</string>
+    <string name="error_missing_image_title">Image File Missing</string>
+    <string name="error_missing_image_desc">The reference image for this project could not be found on storage. Would you like to select a new image or delete this project?</string>
+    <string name="error_pick_new_image">Pick New Image</string>
+    <string name="error_delete_project">Delete Project</string>
+
+    <!-- Settings Screen -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_section_defaults">Tracing Defaults</string>
+    <string name="settings_default_opacity">Default Opacity</string>
+    <string name="settings_default_fit_mode">Default Fit Mode</string>
+    <string name="settings_default_grid_size">Default Grid Size</string>
+    <string name="settings_default_line_color">Default Line Color</string>
+    <string name="settings_smoothing_level">Overlay Smoothing</string>
+    <string name="settings_section_behavior">Comfort &amp; Power</string>
+    <string name="settings_left_handed">Left-Handed Mode</string>
+    <string name="settings_left_handed_desc">Moves bottom dock controls to the left side</string>
+    <string name="settings_keep_screen_on">Keep Screen Awake</string>
+    <string name="settings_keep_screen_on_desc">Prevents screen from dimming while tracing</string>
+    <string name="settings_battery_saver">Battery Saver Mode</string>
+    <string name="settings_battery_saver_desc">Lowers AR update rate to extend battery life and reduce heat</string>
+    <string name="settings_show_debug">Show Debug Information</string>
+    <string name="settings_show_debug_desc">Displays point cloud count, tracking latency, and frame diagnostics</string>
+    <string name="settings_how_to_use">How to Use (Tutorial)</string>
+    <string name="settings_reset_all">Reset All Settings</string>
+    <string name="settings_reset_confirm_title">Reset All Settings?</string>
+    <string name="settings_reset_confirm_desc">This will restore all default tracing options and sensitivity to factory defaults.</string>
+    <string name="settings_reset_button">Reset</string>
+    <string name="settings_cancel_button">Cancel</string>
+    <string name="settings_section_about">About</string>
+</resources>

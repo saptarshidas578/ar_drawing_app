@@ -153,6 +153,43 @@ class ProjectRepository(private val context: Context) {
     fun getProjectThumbFile(project: ProjectData): File =
         File(File(baseDir, project.id), project.thumbFileName)
 
+    /**
+     * Replaces the reference image of an existing project (e.g. for recovery).
+     */
+    suspend fun replaceProjectImage(project: ProjectData, sourceUri: Uri): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val projectDir = File(baseDir, project.id).apply { mkdirs() }
+            val imageFile = File(projectDir, project.imageFileName)
+            val thumbFile = File(projectDir, project.thumbFileName)
+
+            context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                FileOutputStream(imageFile).use { output ->
+                    input.copyTo(output)
+                }
+            } ?: return@withContext false
+
+            generateThumbnail(imageFile, thumbFile, 300)
+            saveProject(project)
+            return@withContext true
+        } catch (e: Exception) {
+            Log.e(TAG, "replaceProjectImage error: ${e.message}", e)
+            return@withContext false
+        }
+    }
+
+    /**
+     * Checks if internal storage has enough free space (default 10 MB).
+     */
+    fun hasEnoughStorageSpace(bytesRequired: Long = 10 * 1024 * 1024L): Boolean {
+        return try {
+            val stat = android.os.StatFs(context.filesDir.absolutePath)
+            val availableBytes = stat.availableBlocksLong * stat.blockSizeLong
+            availableBytes > bytesRequired
+        } catch (e: Exception) {
+            true
+        }
+    }
+
     private fun generateThumbnail(srcFile: File, dstFile: File, maxDim: Int) {
         try {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }

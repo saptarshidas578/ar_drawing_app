@@ -3,6 +3,7 @@ package com.tracear.app.ui
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -61,16 +63,22 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+import android.widget.Toast
+import com.tracear.app.data.AppSettings
+
 /**
  * HomeScreen — Project List & Launch Screen.
  *
  * Shows:
- *  - App header & "+ New Project" button
- *  - List of saved projects with thumbnails, names, dates, rename, and delete options
+ *  - App header with Settings, Help/Tutorial, and "+ New Project" button
+ *  - List of saved projects with thumbnails, names, dates, rename, delete, and corrupted image recovery
  *  - Seamless resume into ARScreen
  */
 @Composable
 fun HomeScreen(
+    settings: AppSettings? = null,
+    onOpenSettings: (() -> Unit)? = null,
+    onOpenTutorial: (() -> Unit)? = null,
     onOpenProject: (ProjectData) -> Unit
 ) {
     val context = LocalContext.current
@@ -84,6 +92,8 @@ fun HomeScreen(
     var projectToRename by remember { mutableStateOf<ProjectData?>(null) }
     var renameInput by remember { mutableStateOf("") }
     var projectToDelete by remember { mutableStateOf<ProjectData?>(null) }
+    var missingImageProject by remember { mutableStateOf<ProjectData?>(null) }
+    var storageErrorMsg by remember { mutableStateOf<String?>(null) }
     var newProjectUri by remember { mutableStateOf<Uri?>(null) }
     var newProjectName by remember { mutableStateOf("") }
     var showNewProjectDialog by remember { mutableStateOf(false) }
@@ -101,7 +111,7 @@ fun HomeScreen(
         refreshProjects()
     }
 
-    // Photo picker launcher
+    // Photo picker launcher for new projects
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -110,6 +120,25 @@ fun HomeScreen(
             val defaultName = "Drawing " + SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date())
             newProjectName = defaultName
             showNewProjectDialog = true
+        }
+    }
+
+    // Photo picker launcher for replacing missing project images
+    val replaceImagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        val p = missingImageProject
+        if (uri != null && p != null) {
+            scope.launch {
+                val success = repository.replaceProjectImage(p, uri)
+                missingImageProject = null
+                if (success) {
+                    refreshProjects()
+                    onOpenProject(p)
+                } else {
+                    Toast.makeText(context, "Could not load selected image", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 
@@ -139,27 +168,57 @@ fun HomeScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f, fill = false)) {
                     Text(
                         text = "✏️ TraceAR",
-                        fontSize = 32.sp,
+                        fontSize = 30.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
                     )
                     Text(
                         text = "AR Drawing & Tracing Assistant",
-                        fontSize = 13.sp,
+                        fontSize = 12.sp,
                         color = Color(0xFF8B949E)
                     )
                 }
 
-                // New Project Button
-                Button(
-                    onClick = { imagePickerLauncher.launch("image/*") },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF238636)),
-                    shape = RoundedCornerShape(12.dp)
+                // Header Actions: Tutorial, Settings & New Project
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text("+ New", fontWeight = FontWeight.Bold, color = Color.White)
+                    if (onOpenTutorial != null) {
+                        IconButton(
+                            onClick = onOpenTutorial,
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0xFF21262D))
+                        ) {
+                            Text("❓", fontSize = 16.sp)
+                        }
+                    }
+
+                    if (onOpenSettings != null) {
+                        IconButton(
+                            onClick = onOpenSettings,
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0xFF21262D))
+                        ) {
+                            Text("⚙️", fontSize = 16.sp)
+                        }
+                    }
+
+                    Button(
+                        onClick = { imagePickerLauncher.launch("image/*") },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF238636)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.height(40.dp)
+                    ) {
+                        Text("+ New", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 14.sp)
+                    }
                 }
             }
 
@@ -183,32 +242,58 @@ fun HomeScreen(
                         .weight(1f),
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(32.dp)
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF161B22)),
+                        border = BorderStroke(1.dp, Color(0xFF30363D))
                     ) {
-                        Text(text = "🎨", fontSize = 48.sp)
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "No projects yet",
-                            color = Color.White,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "Tap '+ New' to pick an image and start your first tracing project.",
-                            color = Color(0xFF8B949E),
-                            fontSize = 13.sp,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(20.dp))
-                        Button(
-                            onClick = { imagePickerLauncher.launch("image/*") },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF238636)),
-                            shape = RoundedCornerShape(12.dp)
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(28.dp)
                         ) {
-                            Text("Start Drawing", color = Color.White)
+                            Box(
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0x33238636)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(text = "🎨", fontSize = 36.sp)
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "Welcome to TraceAR!",
+                                color = Color.White,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Place your phone on a cup or stand above paper, select an image, and trace directly with pencil or pen.",
+                                color = Color(0xFF8B949E),
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center,
+                                lineHeight = 19.sp
+                            )
+                            Spacer(modifier = Modifier.height(24.dp))
+                            Button(
+                                onClick = { imagePickerLauncher.launch("image/*") },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF238636)),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth().height(48.dp)
+                            ) {
+                                Text("Pick an Image to Trace", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 15.sp)
+                            }
+
+                            if (onOpenTutorial != null) {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                TextButton(onClick = onOpenTutorial) {
+                                    Text("📖 View Quick 5-Step Guide", color = Color(0xFF58A6FF), fontSize = 13.sp)
+                                }
+                            }
                         }
                     }
                 }
@@ -223,7 +308,14 @@ fun HomeScreen(
                         ProjectCard(
                             project = project,
                             thumbFile = thumbFile,
-                            onOpen = { onOpenProject(project) },
+                            onOpen = {
+                                val imgFile = repository.getProjectImageFile(project)
+                                if (!imgFile.exists() || imgFile.length() == 0L) {
+                                    missingImageProject = project
+                                } else {
+                                    onOpenProject(project)
+                                }
+                            },
                             onRename = {
                                 projectToRename = project
                                 renameInput = project.name
@@ -265,12 +357,19 @@ fun HomeScreen(
                 Button(
                     onClick = {
                         val uri = newProjectUri ?: return@Button
+                        if (!repository.hasEnoughStorageSpace()) {
+                            showNewProjectDialog = false
+                            storageErrorMsg = "Device storage is low. Please free up space before saving new projects."
+                            return@Button
+                        }
                         showNewProjectDialog = false
                         scope.launch {
                             val created = repository.createProject(newProjectName, uri)
                             if (created != null) {
                                 refreshProjects()
                                 onOpenProject(created)
+                            } else {
+                                storageErrorMsg = "Unable to create project. Please verify file access and available device storage."
                             }
                         }
                     },
@@ -288,6 +387,72 @@ fun HomeScreen(
             shape = RoundedCornerShape(16.dp)
         )
     }
+
+    // --- Missing Image Recovery Dialog ---
+    missingImageProject?.let { project ->
+        AlertDialog(
+            onDismissRequest = { missingImageProject = null },
+            title = { Text("⚠️ Image Not Found", color = Color(0xFFFFD600), fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "The drawing image for \"${project.name}\" was removed or could not be found.\n\nChoose a new image to replace it, or remove this project from your list.",
+                    color = Color(0xFFC9D1D9),
+                    fontSize = 13.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        replaceImagePickerLauncher.launch("image/*")
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF58A6FF))
+                ) {
+                    Text("Pick New Image", color = Color.White)
+                }
+            },
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = {
+                            val p = missingImageProject ?: return@TextButton
+                            missingImageProject = null
+                            scope.launch {
+                                repository.deleteProject(p.id)
+                                refreshProjects()
+                            }
+                        }
+                    ) {
+                        Text("Delete", color = Color(0xFFDA3633))
+                    }
+                    TextButton(onClick = { missingImageProject = null }) {
+                        Text("Cancel", color = Color(0xFF8B949E))
+                    }
+                }
+            },
+            containerColor = Color(0xFF1C2128),
+            shape = RoundedCornerShape(16.dp)
+        )
+    }
+
+    // --- Storage Error Dialog ---
+    storageErrorMsg?.let { msg ->
+        AlertDialog(
+            onDismissRequest = { storageErrorMsg = null },
+            title = { Text("💾 Storage Error", color = Color(0xFFDA3633), fontWeight = FontWeight.Bold) },
+            text = { Text(msg, color = Color(0xFFC9D1D9), fontSize = 13.sp) },
+            confirmButton = {
+                Button(
+                    onClick = { storageErrorMsg = null },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF30363D))
+                ) {
+                    Text("OK", color = Color.White)
+                }
+            },
+            containerColor = Color(0xFF1C2128),
+            shape = RoundedCornerShape(16.dp)
+        )
+    }
+
 
     // --- Rename Dialog ---
     projectToRename?.let { project ->

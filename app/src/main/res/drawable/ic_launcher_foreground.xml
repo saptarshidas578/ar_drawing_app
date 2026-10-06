@@ -1,0 +1,62 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- AR Framing Reticle / Paper Corner Brackets -->
+    <path
+        android:strokeColor="#58A6FF"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M32,38 L32,32 L38,32" />
+    <path
+        android:strokeColor="#58A6FF"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M70,32 L76,32 L76,38" />
+    <path
+        android:strokeColor="#58A6FF"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M76,70 L76,76 L70,76" />
+    <path
+        android:strokeColor="#58A6FF"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M38,76 L32,76 L32,70" />
+
+    <!-- Paper Sheet Shape -->
+    <path
+        android:fillColor="#F0F6FC"
+        android:pathData="M36,35 L64,35 L72,43 L72,73 L36,73 Z" />
+
+    <!-- Folded Corner Detail -->
+    <path
+        android:fillColor="#D0D7DE"
+        android:pathData="M64,35 L72,43 L64,43 Z" />
+
+    <!-- Neon Cyan Traced Line on Paper -->
+    <path
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="3.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M43,62 Q49,47 55,54 T67,49" />
+
+    <!-- Pencil Body -->
+    <path
+        android:fillColor="#FFD166"
+        android:pathData="M66,45 L73,38 L76,41 L69,48 Z" />
+
+    <!-- Pencil Tip -->
+    <path
+        android:fillColor="#E76F51"
+        android:pathData="M66,45 L64,48 L69,48 Z" />
+
+    <!-- Pencil Lead Point -->
+    <path
+        android:fillColor="#212529"
+        android:pathData="M64,48 L63.5,49 L65,49 Z" />
+
+</vector>
