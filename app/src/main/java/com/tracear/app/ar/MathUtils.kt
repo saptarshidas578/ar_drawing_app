@@ -215,4 +215,76 @@ object MathUtils {
         inv[15] = (a20 * b03 - a21 * b01 + a22 * b00) * invDet
         return true
     }
+
+    /**
+     * Rotates a 3D vector by a quaternion [qx, qy, qz, qw].
+     */
+    fun rotateVectorByQuaternion(v: Vector3f, qx: Float, qy: Float, qz: Float, qw: Float): Vector3f {
+        val tx = 2f * (qy * v.z - qz * v.y)
+        val ty = 2f * (qz * v.x - qx * v.z)
+        val tz = 2f * (qx * v.y - qy * v.x)
+        return Vector3f(
+            x = v.x + qw * tx + (qy * tz - qz * ty),
+            y = v.y + qw * ty + (qz * tx - qx * tz),
+            z = v.z + qw * tz + (qx * ty - qy * tx)
+        )
+    }
+
+    /**
+     * Converts a 2D CPU camera image pixel (u, v) into a 3D ray in world space
+     * using camera intrinsics and the camera world pose.
+     */
+    fun unprojectCameraPixelToRay(
+        u: Float,
+        v: Float,
+        fx: Float,
+        fy: Float,
+        cx: Float,
+        cy: Float,
+        camTx: Float,
+        camTy: Float,
+        camTz: Float,
+        camQx: Float,
+        camQy: Float,
+        camQz: Float,
+        camQw: Float
+    ): Ray {
+        val camDir = Vector3f(
+            x = (u - cx) / fx,
+            y = (v - cy) / fy,
+            z = 1.0f
+        ).normalized()
+
+        val worldDir = rotateVectorByQuaternion(camDir, camQx, camQy, camQz, camQw).normalized()
+        val worldOrigin = Vector3f(camTx, camTy, camTz)
+        return Ray(worldOrigin, worldDir)
+    }
+
+    /**
+     * Projects a 3D world coordinate into a 2D CPU camera image pixel (u, v).
+     * Returns null if the point is behind or on the camera plane.
+     */
+    fun projectWorldPointToCameraPixel(
+        worldPoint: Vector3f,
+        fx: Float,
+        fy: Float,
+        cx: Float,
+        cy: Float,
+        camTx: Float,
+        camTy: Float,
+        camTz: Float,
+        camQx: Float,
+        camQy: Float,
+        camQz: Float,
+        camQw: Float
+    ): Pair<Float, Float>? {
+        val diff = Vector3f(worldPoint.x - camTx, worldPoint.y - camTy, worldPoint.z - camTz)
+        // Conjugate quaternion rotates from world space into camera space
+        val pCam = rotateVectorByQuaternion(diff, -camQx, -camQy, -camQz, camQw)
+        if (pCam.z <= 0.001f) return null
+
+        val u = cx + fx * (pCam.x / pCam.z)
+        val v = cy + fy * (pCam.y / pCam.z)
+        return Pair(u, v)
+    }
 }

@@ -136,4 +136,60 @@ class MathUtilsTest {
             assertEquals(identity[i], inv[i], 1e-4f)
         }
     }
+
+    @Test
+    fun testCameraUnprojectionAndProjection() {
+        // Simulated camera looking down at origin from (0, 0.5, 0)
+        // Camera optical coordinates: +Z is forward (down towards -Y in world),
+        // +X is right (+X in world), +Y is down (+Z in world)
+        // Rotation quaternion for this: 90 deg around +X axis
+        // qx = sin(45 deg) = 0.7071f, qw = cos(45 deg) = 0.7071f
+        val qx = 0.70710677f
+        val qy = 0f
+        val qz = 0f
+        val qw = 0.70710677f
+
+        val fx = 1000f
+        val fy = 1000f
+        val cx = 500f
+        val cy = 500f
+
+        // Center pixel (500, 500) unprojected should shoot ray straight down towards -Y
+        val ray = MathUtils.unprojectCameraPixelToRay(
+            u = 500f, v = 500f,
+            fx = fx, fy = fy, cx = cx, cy = cy,
+            camTx = 0f, camTy = 0.5f, camTz = 0f,
+            camQx = qx, camQy = qy, camQz = qz, camQw = qw
+        )
+
+        assertEquals(0f, ray.origin.x, 1e-4f)
+        assertEquals(0.5f, ray.origin.y, 1e-4f)
+        assertEquals(0f, ray.origin.z, 1e-4f)
+
+        // Direction should be (0, -1, 0)
+        assertEquals(0f, ray.direction.x, 1e-4f)
+        assertEquals(-1f, ray.direction.y, 1e-4f)
+        assertEquals(0f, ray.direction.z, 1e-4f)
+
+        // Hit point on table plane y=0 should be (0, 0, 0)
+        val planePoint = Vector3f(0f, 0f, 0f)
+        val planeNormal = Vector3f(0f, 1f, 0f)
+        val hitResult = MathUtils.rayPlaneIntersection(ray, planePoint, planeNormal)
+        assertTrue(hitResult is RayPlaneResult.Hit)
+        val hit = (hitResult as RayPlaneResult.Hit).point
+        assertEquals(0f, hit.x, 1e-4f)
+        assertEquals(0f, hit.y, 1e-4f)
+        assertEquals(0f, hit.z, 1e-4f)
+
+        // Projecting (0, 0, 0) back should yield center pixel (500, 500)
+        val proj = MathUtils.projectWorldPointToCameraPixel(
+            worldPoint = Vector3f(0f, 0f, 0f),
+            fx = fx, fy = fy, cx = cx, cy = cy,
+            camTx = 0f, camTy = 0.5f, camTz = 0f,
+            camQx = qx, camQy = qy, camQz = qz, camQw = qw
+        )
+        org.junit.Assert.assertNotNull(proj)
+        assertEquals(500f, proj!!.first, 1e-2f)
+        assertEquals(500f, proj.second, 1e-2f)
+    }
 }
