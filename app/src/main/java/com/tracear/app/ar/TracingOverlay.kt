@@ -55,7 +55,10 @@ fun createTracingOverlayNode(
     transform: com.tracear.app.data.NormalizedTransform? = null,
     crop: com.tracear.app.data.NormalizedCrop? = null,
     isRulerEnabled: Boolean = false,
-    paperLockState: PaperLockState? = null
+    paperLockState: PaperLockState? = null,
+    guidesState: GuidesState? = null,
+    zoomScale: Float = 1f,
+    ambientIntensity: Float = 0.5f
 ): AnchorNode? {
     if (localCorners.size < 4) return null
 
@@ -76,7 +79,7 @@ fun createTracingOverlayNode(
 
         val lift = 0.001f // 1 mm above the surface to prevent z-fighting
 
-        // 3. Prepare bitmap with opacity, fit mode, adjustments, AR grid, crop and ruler
+        // 3. Prepare bitmap with opacity, fit mode, adjustments, AR grid, crop, ruler, and drawing guides
         val finalBitmap = prepareBitmap(
             src = effectiveBitmap,
             opacity = opacity,
@@ -89,7 +92,10 @@ fun createTracingOverlayNode(
             adjustments = if (linesBitmap == null) adjustments else null,
             transform = transform,
             crop = crop,
-            isRulerEnabled = isRulerEnabled
+            isRulerEnabled = isRulerEnabled,
+            guidesState = guidesState,
+            zoomScale = zoomScale,
+            ambientIntensity = ambientIntensity
         )
 
         // 4. Vertex buffer: TL=(0,0)  TR=(1,0)  BR=(1,1)  BL=(0,1)
@@ -238,7 +244,10 @@ private fun prepareBitmap(
     adjustments: ImageAdjustments? = null,
     transform: com.tracear.app.data.NormalizedTransform? = null,
     crop: com.tracear.app.data.NormalizedCrop? = null,
-    isRulerEnabled: Boolean = false
+    isRulerEnabled: Boolean = false,
+    guidesState: GuidesState? = null,
+    zoomScale: Float = 1f,
+    ambientIntensity: Float = 0.5f
 ): Bitmap {
     val srcRect: android.graphics.Rect?
     val cropW: Int
@@ -343,6 +352,67 @@ private fun prepareBitmap(
     // 3. Draw On-Paper Metric Ruler if enabled
     if (isRulerEnabled && paperWidthMeters > 0.01f && paperHeightMeters > 0.01f) {
         drawRulerOverlay(canvas, targetW, targetH, paperWidthMeters, paperHeightMeters)
+    }
+
+    // 4. Draw Drawing Guides if enabled
+    if (guidesState != null && guidesState.isAnyGuideActive) {
+        val imgRect = when (fitMode) {
+            FitMode.STRETCH -> RectF(0f, 0f, targetW.toFloat(), targetH.toFloat())
+            FitMode.FIT -> {
+                val scale = min(targetW.toFloat() / cropW, targetH.toFloat() / cropH)
+                val drawW = cropW * scale
+                val drawH = cropH * scale
+                val left = (targetW - drawW) / 2f
+                val top = (targetH - drawH) / 2f
+                RectF(left, top, left + drawW, top + drawH)
+            }
+            FitMode.FILL -> {
+                val scale = max(targetW.toFloat() / cropW, targetH.toFloat() / cropH)
+                val drawW = cropW * scale
+                val drawH = cropH * scale
+                val left = (targetW - drawW) / 2f
+                val top = (targetH - drawH) / 2f
+                RectF(left, top, left + drawW, top + drawH)
+            }
+        }
+
+        if (guidesState.moveWithImage) {
+            canvas.save()
+            if (transform != null) {
+                val cx = targetW / 2f
+                val cy = targetH / 2f
+                canvas.translate(transform.offsetX * targetW, transform.offsetY * targetH)
+                canvas.rotate(transform.rotationDegrees, cx, cy)
+                val sx = transform.scale * (if (transform.flipH) -1f else 1f)
+                val sy = transform.scale * (if (transform.flipV) -1f else 1f)
+                canvas.scale(sx, sy, cx, cy)
+            }
+            drawDrawingGuidesOverlay(
+                canvas = canvas,
+                width = targetW,
+                height = targetH,
+                bounds = imgRect,
+                guidesState = guidesState,
+                zoomScale = zoomScale,
+                ambientIntensity = ambientIntensity,
+                paperWidthMeters = paperWidthMeters,
+                paperHeightMeters = paperHeightMeters
+            )
+            canvas.restore()
+        } else {
+            val paperRect = RectF(0f, 0f, targetW.toFloat(), targetH.toFloat())
+            drawDrawingGuidesOverlay(
+                canvas = canvas,
+                width = targetW,
+                height = targetH,
+                bounds = paperRect,
+                guidesState = guidesState,
+                zoomScale = zoomScale,
+                ambientIntensity = ambientIntensity,
+                paperWidthMeters = paperWidthMeters,
+                paperHeightMeters = paperHeightMeters
+            )
+        }
     }
 
     // 4. Draw Debug Corner Border if debug mode on
@@ -690,4 +760,181 @@ private fun bitmapToFilamentTexture(engine: Engine, bitmap: Bitmap): Texture {
     }
 
     return texture
+}
+
+/**
+ * Draws classic drawing guides (proportion grid, chessboard labels, center cross,
+ * diagonals, rule of thirds, and golden ratio lines) directly onto the AR overlay bitmap.
+ */
+private fun drawDrawingGuidesOverlay(
+    canvas: Canvas,
+    width: Int,
+    height: Int,
+    bounds: RectF,
+    guidesState: GuidesState,
+    zoomScale: Float,
+    ambientIntensity: Float,
+    paperWidthMeters: Float,
+    paperHeightMeters: Float
+) {
+    val baseColorInt = if (guidesState.isAutoContrast) {
+        if (ambientIntensity > 0.45f) Color.rgb(20, 20, 20) else Color.rgb(250, 250, 250)
+    } else {
+        val c = guidesState.colorOption.color
+        Color.argb((c.alpha * 255).toInt(), (c.red * 255).toInt(), (c.green * 255).toInt(), (c.blue * 255).toInt())
+    }
+
+    val alphaVal = (guidesState.opacity.coerceIn(0.05f, 1.0f) * 255).toInt()
+    val effectiveLineColor = Color.argb(
+        alphaVal,
+        Color.red(baseColorInt),
+        Color.green(baseColorInt),
+        Color.blue(baseColorInt)
+    )
+
+    val isBrightColor = (Color.red(baseColorInt) + Color.green(baseColorInt) + Color.blue(baseColorInt)) > 380
+    val shadowColor = if (isBrightColor) {
+        Color.argb((alphaVal * 0.7f).toInt(), 0, 0, 0)
+    } else {
+        Color.argb((alphaVal * 0.7f).toInt(), 255, 255, 255)
+    }
+
+    val strokePx = (guidesState.thicknessDp * (min(width, height) / 400f)).coerceIn(1.5f, 10f)
+
+    val linePaint = Paint().apply {
+        color = effectiveLineColor
+        style = Paint.Style.STROKE
+        strokeWidth = strokePx
+        isAntiAlias = true
+    }
+
+    val shadowPaint = Paint().apply {
+        color = shadowColor
+        style = Paint.Style.STROKE
+        strokeWidth = strokePx + 1.5f
+        isAntiAlias = true
+    }
+
+    fun drawLineWithShadow(x1: Float, y1: Float, x2: Float, y2: Float) {
+        canvas.drawLine(x1, y1, x2, y2, shadowPaint)
+        canvas.drawLine(x1, y1, x2, y2, linePaint)
+    }
+
+    // ── 1. Proportion Grid ──────────────────────────────────────────
+    if (guidesState.isGridEnabled) {
+        val (cols, rows) = when (guidesState.gridMode) {
+            GuideGridMode.COUNT -> {
+                guidesState.gridCols.coerceIn(2, 20) to guidesState.gridRows.coerceIn(2, 20)
+            }
+            GuideGridMode.REAL_SIZE -> {
+                if (paperWidthMeters > 0.01f && paperHeightMeters > 0.01f) {
+                    GuidesMath.calculateRealSizeCols(paperWidthMeters, guidesState.cellSizeCm).coerceIn(1, 100) to
+                    GuidesMath.calculateRealSizeRows(paperHeightMeters, guidesState.cellSizeCm).coerceIn(1, 100)
+                } else {
+                    guidesState.gridCols.coerceIn(2, 20) to guidesState.gridRows.coerceIn(2, 20)
+                }
+            }
+        }
+
+        val bW = bounds.width()
+        val bH = bounds.height()
+        val cellW = bW / cols
+        val cellH = bH / rows
+
+        // Draw outer boundary
+        canvas.drawRect(bounds, shadowPaint)
+        canvas.drawRect(bounds, linePaint)
+
+        // Draw vertical grid lines
+        for (c in 1 until cols) {
+            val x = bounds.left + c * cellW
+            drawLineWithShadow(x, bounds.top, x, bounds.bottom)
+        }
+
+        // Draw horizontal grid lines
+        for (r in 1 until rows) {
+            val y = bounds.top + r * cellH
+            drawLineWithShadow(bounds.left, y, bounds.right, y)
+        }
+
+        // Chessboard Labels (fades out smoothly as zoom exceeds 2.5x)
+        if (guidesState.showLabels) {
+            val labelFade = GuidesMath.calculateLabelZoomFade(zoomScale)
+            if (labelFade > 0.02f) {
+                val textAlpha = (alphaVal * labelFade).toInt().coerceIn(0, 255)
+                val textSize = (min(cellW, cellH) * 0.28f).coerceIn(12f, 40f)
+
+                val textFillPaint = Paint().apply {
+                    color = Color.argb(textAlpha, Color.red(baseColorInt), Color.green(baseColorInt), Color.blue(baseColorInt))
+                    this.textSize = textSize
+                    typeface = Typeface.DEFAULT_BOLD
+                    isAntiAlias = true
+                }
+
+                val textShadowPaint = Paint().apply {
+                    color = Color.argb((textAlpha * 0.75f).toInt(), Color.red(shadowColor), Color.green(shadowColor), Color.blue(shadowColor))
+                    this.textSize = textSize
+                    typeface = Typeface.DEFAULT_BOLD
+                    style = Paint.Style.STROKE
+                    strokeWidth = 2.5f
+                    isAntiAlias = true
+                }
+
+                for (c in 0 until cols) {
+                    for (r in 0 until rows) {
+                        val label = "${GuidesMath.getColumnLabel(c)}${GuidesMath.getRowLabel(r)}"
+                        val tx = bounds.left + c * cellW + (cellW * 0.08f).coerceIn(4f, 16f)
+                        val ty = bounds.top + r * cellH + (cellH * 0.22f).coerceIn(14f, 32f)
+                        canvas.drawText(label, tx, ty, textShadowPaint)
+                        canvas.drawText(label, tx, ty, textFillPaint)
+                    }
+                }
+            }
+        }
+    }
+
+    // ── 2. Construction Lines ──────────────────────────────────────
+    // Center Horizontal
+    if (guidesState.showCenterH) {
+        val y = bounds.centerY()
+        drawLineWithShadow(bounds.left, y, bounds.right, y)
+    }
+
+    // Center Vertical
+    if (guidesState.showCenterV) {
+        val x = bounds.centerX()
+        drawLineWithShadow(x, bounds.top, x, bounds.bottom)
+    }
+
+    // Diagonals
+    if (guidesState.showDiagonals) {
+        drawLineWithShadow(bounds.left, bounds.top, bounds.right, bounds.bottom)
+        drawLineWithShadow(bounds.left, bounds.bottom, bounds.right, bounds.top)
+    }
+
+    // Rule of Thirds
+    if (guidesState.showThirds) {
+        val x1 = bounds.left + bounds.width() / 3f
+        val x2 = bounds.left + 2f * bounds.width() / 3f
+        val y1 = bounds.top + bounds.height() / 3f
+        val y2 = bounds.top + 2f * bounds.height() / 3f
+
+        drawLineWithShadow(x1, bounds.top, x1, bounds.bottom)
+        drawLineWithShadow(x2, bounds.top, x2, bounds.bottom)
+        drawLineWithShadow(bounds.left, y1, bounds.right, y1)
+        drawLineWithShadow(bounds.left, y2, bounds.right, y2)
+    }
+
+    // Golden Ratio Lines (0.382 and 0.618)
+    if (guidesState.showGoldenRatio) {
+        val x1 = bounds.left + bounds.width() * GuidesMath.GOLDEN_RATIO_COMP
+        val x2 = bounds.left + bounds.width() * GuidesMath.GOLDEN_RATIO_INV
+        val y1 = bounds.top + bounds.height() * GuidesMath.GOLDEN_RATIO_COMP
+        val y2 = bounds.top + bounds.height() * GuidesMath.GOLDEN_RATIO_INV
+
+        drawLineWithShadow(x1, bounds.top, x1, bounds.bottom)
+        drawLineWithShadow(x2, bounds.top, x2, bounds.bottom)
+        drawLineWithShadow(bounds.left, y1, bounds.right, y1)
+        drawLineWithShadow(bounds.left, y2, bounds.right, y2)
+    }
 }

@@ -21,6 +21,8 @@ enum class LineColorOption(val label: String, val color: Color) {
     CYAN("Cyan", Color(0xFF00E5FF)),
     YELLOW("Yellow", Color(0xFFFFD600)),
     RED("Red", Color(0xFFFF3D00)),
+    GREEN("Green", Color(0xFF00E676)),
+    BLUE("Blue", Color(0xFF2979FF)),
     WHITE("White", Color(0xFFFFFFFF)),
     BLACK("Black", Color(0xFF000000))
 }

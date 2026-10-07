@@ -52,6 +52,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tracear.app.ar.FitMode
 import com.tracear.app.ar.GridState
+import com.tracear.app.ar.GuideGridMode
+import com.tracear.app.ar.GuidesMath
+import com.tracear.app.ar.GuidesState
 import com.tracear.app.ar.ImageAdjustments
 import com.tracear.app.ar.LineColorOption
 import com.tracear.app.ar.LinesOnlyState
@@ -105,6 +108,8 @@ fun TracingCategorySheet(
     // Sections (Grid)
     gridState: GridState,
     onFocusActiveSection: () -> Unit,
+    // Guides
+    guidesState: GuidesState? = null,
     // Adjust
     adjustments: ImageAdjustments,
     onAdjustmentsChange: (ImageAdjustments) -> Unit,
@@ -271,6 +276,16 @@ fun TracingCategorySheet(
                         },
                         onInteract = onInteract
                     )
+                }
+                DockCategory.GUIDES -> {
+                    if (guidesState != null) {
+                        GuidesSheetContent(
+                            guidesState = guidesState,
+                            paperWidthMeters = paperWidthMeters,
+                            paperHeightMeters = paperHeightMeters,
+                            onInteract = onInteract
+                        )
+                    }
                 }
                 DockCategory.ADJUST -> {
                     AdjustSheetContent(
@@ -1686,5 +1701,530 @@ private fun ViewSheetContent(
                 Text("🔄 Re-align", fontSize = 10.sp, color = Color(0xFF58A6FF), fontWeight = FontWeight.Bold)
             }
         }
+    }
+}
+
+// =====================================================================
+// Category: Guides (Drawing Guides, Proportions & Construction Lines)
+// =====================================================================
+@Composable
+private fun GuidesSheetContent(
+    guidesState: GuidesState,
+    paperWidthMeters: Float,
+    paperHeightMeters: Float,
+    onInteract: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        // ── Card 1: Proportion Grid ──
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF21262D))
+                .padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "Proportion Grid",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = if (guidesState.isGridEnabled) "Active on paper" else "Disabled",
+                        color = if (guidesState.isGridEnabled) Color(0xFF00E5FF) else Color(0xFF8B949E),
+                        fontSize = 10.sp
+                    )
+                }
+                Button(
+                    onClick = {
+                        onInteract()
+                        guidesState.isGridEnabled = !guidesState.isGridEnabled
+                    },
+                    modifier = Modifier.height(28.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (guidesState.isGridEnabled) Color(0xFF1F6FEB) else Color(0xFF30363D)
+                    )
+                ) {
+                    Text(
+                        text = if (guidesState.isGridEnabled) "Enabled ✓" else "Enable",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            }
+
+            if (guidesState.isGridEnabled) {
+                // Mode Toggle: By Count vs Real Size (cm)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF161B22))
+                        .padding(2.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    GuideGridMode.entries.forEach { mode ->
+                        val isSel = guidesState.gridMode == mode
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(26.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isSel) Color(0xFF388BFD) else Color.Transparent)
+                                .clickable {
+                                    onInteract()
+                                    guidesState.gridMode = mode
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = mode.label,
+                                fontSize = 11.sp,
+                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSel) Color.White else Color(0xFF8B949E)
+                            )
+                        }
+                    }
+                }
+
+                if (guidesState.gridMode == GuideGridMode.COUNT) {
+                    // Columns slider
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Columns", color = Color(0xFF8B949E), fontSize = 11.sp)
+                        Text("${guidesState.gridCols}", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Slider(
+                        value = guidesState.gridCols.toFloat(),
+                        onValueChange = {
+                            onInteract()
+                            guidesState.gridCols = it.roundToInt().coerceIn(2, 20)
+                        },
+                        valueRange = 2f..20f,
+                        steps = 17,
+                        modifier = Modifier.fillMaxWidth().height(24.dp),
+                        colors = SliderDefaults.colors(thumbColor = Color(0xFF00E5FF), activeTrackColor = Color(0xFF00E5FF))
+                    )
+
+                    // Rows slider
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Rows", color = Color(0xFF8B949E), fontSize = 11.sp)
+                        Text("${guidesState.gridRows}", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Slider(
+                        value = guidesState.gridRows.toFloat(),
+                        onValueChange = {
+                            onInteract()
+                            guidesState.gridRows = it.roundToInt().coerceIn(2, 20)
+                        },
+                        valueRange = 2f..20f,
+                        steps = 17,
+                        modifier = Modifier.fillMaxWidth().height(24.dp),
+                        colors = SliderDefaults.colors(thumbColor = Color(0xFF00E5FF), activeTrackColor = Color(0xFF00E5FF))
+                    )
+                } else {
+                    // REAL_SIZE mode
+                    val isPaperKnown = paperWidthMeters > 0.01f && paperHeightMeters > 0.01f
+                    if (isPaperKnown) {
+                        val cCols = GuidesMath.calculateRealSizeCols(paperWidthMeters, guidesState.cellSizeCm)
+                        val cRows = GuidesMath.calculateRealSizeRows(paperHeightMeters, guidesState.cellSizeCm)
+                        val wCm = "%.1f".format(paperWidthMeters * 100f)
+                        val hCm = "%.1f".format(paperHeightMeters * 100f)
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Cell Size", color = Color(0xFF8B949E), fontSize = 11.sp)
+                            Text("%.1f cm".format(guidesState.cellSizeCm), color = Color(0xFF00E5FF), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Slider(
+                            value = guidesState.cellSizeCm,
+                            onValueChange = {
+                                onInteract()
+                                guidesState.cellSizeCm = ((it * 2f).roundToInt() / 2f).coerceIn(0.5f, 10.0f)
+                            },
+                            valueRange = 0.5f..10.0f,
+                            modifier = Modifier.fillMaxWidth().height(24.dp),
+                            colors = SliderDefaults.colors(thumbColor = Color(0xFF00E5FF), activeTrackColor = Color(0xFF00E5FF))
+                        )
+
+                        // Quick size presets
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf(1.0f, 2.0f, 3.0f, 5.0f).forEach { sz ->
+                                val isSel = kotlin.math.abs(guidesState.cellSizeCm - sz) < 0.05f
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(24.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(if (isSel) Color(0xFF1F6FEB) else Color(0xFF30363D))
+                                        .clickable {
+                                            onInteract()
+                                            guidesState.cellSizeCm = sz
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("${sz.toInt()} cm", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+
+                        Text(
+                            text = "Paper: $wCm × $hCm cm → $cCols × $cRows cells",
+                            color = Color(0xFF7EE787),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    } else {
+                        // Helpful hint when paper size unknown
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0x33F0883E))
+                                .padding(8.dp)
+                        ) {
+                            Text(
+                                text = "💡 Paper size unknown. Pick a preset in Transform sheet (e.g. A4) to enable real-size centimeter grid.",
+                                color = Color(0xFFF0883E),
+                                fontSize = 10.sp
+                            )
+                        }
+                    }
+                }
+
+                // Chessboard labels toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("Chessboard Labels", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                        Text("A, B, C... / 1, 2, 3... (auto-fades when zoomed)", color = Color(0xFF8B949E), fontSize = 9.sp)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(height = 24.dp, width = 44.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (guidesState.showLabels) Color(0xFF238636) else Color(0xFF30363D))
+                            .clickable {
+                                onInteract()
+                                guidesState.showLabels = !guidesState.showLabels
+                            },
+                        contentAlignment = if (guidesState.showLabels) Alignment.CenterEnd else Alignment.CenterStart
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .padding(2.dp)
+                                .size(20.dp)
+                                .clip(CircleShape)
+                                .background(Color.White)
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── Card 2: Construction Lines ──
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF21262D))
+                .padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "Construction Lines",
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            // Row 1: Center H, Center V, Diagonals
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                GuideToggleChip(
+                    label = "Center (─)",
+                    isActive = guidesState.showCenterH,
+                    onClick = {
+                        onInteract()
+                        guidesState.showCenterH = !guidesState.showCenterH
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+                GuideToggleChip(
+                    label = "Center (│)",
+                    isActive = guidesState.showCenterV,
+                    onClick = {
+                        onInteract()
+                        guidesState.showCenterV = !guidesState.showCenterV
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+                GuideToggleChip(
+                    label = "Diagonals (✕)",
+                    isActive = guidesState.showDiagonals,
+                    onClick = {
+                        onInteract()
+                        guidesState.showDiagonals = !guidesState.showDiagonals
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            // Row 2: Rule of Thirds, Golden Ratio
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                GuideToggleChip(
+                    label = "Thirds (3×3)",
+                    isActive = guidesState.showThirds,
+                    onClick = {
+                        onInteract()
+                        guidesState.showThirds = !guidesState.showThirds
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+                GuideToggleChip(
+                    label = "Golden Ratio (Φ)",
+                    isActive = guidesState.showGoldenRatio,
+                    onClick = {
+                        onInteract()
+                        guidesState.showGoldenRatio = !guidesState.showGoldenRatio
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        // ── Card 3: Style & Placement ──
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF21262D))
+                .padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "Style & Placement",
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            // Line Color & Auto Contrast
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Color", color = Color(0xFF8B949E), fontSize = 11.sp)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .height(24.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (guidesState.isAutoContrast) Color(0xFF238636) else Color(0xFF30363D))
+                            .clickable {
+                                onInteract()
+                                guidesState.isAutoContrast = !guidesState.isAutoContrast
+                            }
+                            .padding(horizontal = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (guidesState.isAutoContrast) "Auto Contrast ✓" else "Auto Contrast",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+
+                    if (!guidesState.isAutoContrast) {
+                        LineColorOption.entries.forEach { option ->
+                            val isSel = guidesState.colorOption == option
+                            Box(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .clip(CircleShape)
+                                    .background(option.color)
+                                    .border(
+                                        width = if (isSel) 2.dp else 1.dp,
+                                        color = if (isSel) Color(0xFF58A6FF) else Color(0xFF484F58),
+                                        shape = CircleShape
+                                    )
+                                    .clickable {
+                                        onInteract()
+                                        guidesState.colorOption = option
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (isSel) {
+                                    Text(
+                                        "✓",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (option == LineColorOption.WHITE || option == LineColorOption.YELLOW || option == LineColorOption.CYAN) Color.Black else Color.White
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Thickness
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Thickness", color = Color(0xFF8B949E), fontSize = 11.sp)
+                Text("%.1f dp".format(guidesState.thicknessDp), color = Color.White, fontSize = 11.sp)
+            }
+            Slider(
+                value = guidesState.thicknessDp,
+                onValueChange = {
+                    onInteract()
+                    guidesState.thicknessDp = it
+                },
+                valueRange = 0.8f..4.0f,
+                modifier = Modifier.fillMaxWidth().height(24.dp),
+                colors = SliderDefaults.colors(thumbColor = Color(0xFF58A6FF), activeTrackColor = Color(0xFF58A6FF))
+            )
+
+            // Opacity
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Opacity", color = Color(0xFF8B949E), fontSize = 11.sp)
+                Text("${(guidesState.opacity * 100).toInt()}%", color = Color.White, fontSize = 11.sp)
+            }
+            Slider(
+                value = guidesState.opacity,
+                onValueChange = {
+                    onInteract()
+                    guidesState.opacity = it
+                },
+                valueRange = 0.1f..1.0f,
+                modifier = Modifier.fillMaxWidth().height(24.dp),
+                colors = SliderDefaults.colors(thumbColor = Color(0xFF58A6FF), activeTrackColor = Color(0xFF58A6FF))
+            )
+
+            // Move guides with image toggle
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                    Text("Move guides with image", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    Text(
+                        text = if (guidesState.moveWithImage) "Guides scale & rotate with image" else "Guides stay fixed to paper",
+                        color = Color(0xFF8B949E),
+                        fontSize = 9.sp
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .size(height = 24.dp, width = 44.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (guidesState.moveWithImage) Color(0xFF1F6FEB) else Color(0xFF30363D))
+                        .clickable {
+                            onInteract()
+                            guidesState.moveWithImage = !guidesState.moveWithImage
+                        },
+                    contentAlignment = if (guidesState.moveWithImage) Alignment.CenterEnd else Alignment.CenterStart
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .padding(2.dp)
+                            .size(20.dp)
+                            .clip(CircleShape)
+                            .background(Color.White)
+                    )
+                }
+            }
+        }
+
+        // Reset button if any guide is active
+        if (guidesState.isAnyGuideActive) {
+            Button(
+                onClick = {
+                    onInteract()
+                    guidesState.reset()
+                },
+                modifier = Modifier.fillMaxWidth().height(30.dp),
+                shape = RoundedCornerShape(6.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0x33F0883E))
+            ) {
+                Text("Reset Guides", fontSize = 11.sp, color = Color(0xFFF0883E), fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun GuideToggleChip(
+    label: String,
+    isActive: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .height(28.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (isActive) Color(0xFF1F6FEB) else Color(0xFF161B22))
+            .border(
+                width = 0.5.dp,
+                color = if (isActive) Color(0xFF58A6FF) else Color(0xFF30363D),
+                shape = RoundedCornerShape(6.dp)
+            )
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            fontSize = 10.sp,
+            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
+            color = if (isActive) Color.White else Color(0xFFC9D1D9)
+        )
     }
 }

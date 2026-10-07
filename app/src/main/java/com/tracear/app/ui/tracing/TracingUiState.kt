@@ -13,6 +13,7 @@ enum class DockCategory(val label: String, val icon: String) {
     OPACITY("Opacity", "💧"),
     TRANSFORM("Transform", "📐"),
     SECTIONS("Sections", "▦"),
+    GUIDES("Guides", "🧭"),
     ADJUST("Adjust", "🎨"),
     LINES("Lines", "✏️"),
     VIEW("View", "🔍")

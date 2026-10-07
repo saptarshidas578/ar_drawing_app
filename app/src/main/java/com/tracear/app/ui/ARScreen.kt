@@ -97,6 +97,7 @@ import com.tracear.app.ar.CalibrationState
 import com.tracear.app.ar.DetectedPaper
 import com.tracear.app.ar.FitMode
 import com.tracear.app.ar.GridState
+import com.tracear.app.ar.GuidesState
 import com.tracear.app.ar.ImageAdjustments
 import com.tracear.app.ar.ImageLineExtractor
 import com.tracear.app.ar.LineColorOption
@@ -285,6 +286,13 @@ fun ARScreen(
                 selectedColorOption = LineColorOption.entries.find { it.name == currentProject!!.lineColorName } ?: LineColorOption.CYAN
             } else if (settings != null) {
                 selectedColorOption = settings.defaultLineColor
+            }
+        }
+    }
+    val guidesState = remember {
+        GuidesState().apply {
+            if (currentProject != null) {
+                applyData(currentProject!!.guides)
             }
         }
     }
@@ -502,7 +510,8 @@ fun ARScreen(
             smoothingMode = smoothingMode.name,
             crop = crop,
             paperPresetName = paperPreset.name,
-            isRulerEnabled = isRulerEnabled
+            isRulerEnabled = isRulerEnabled,
+            guides = guidesState.toData()
         )
         scope.launch(Dispatchers.IO) {
             repository.saveProject(updated)
@@ -936,6 +945,19 @@ fun ARScreen(
                                             }
                                         }
                                     }
+
+                                    // Auto Contrast for Drawing Guides
+                                    if (guidesState.isAutoContrast && guidesState.isAnyGuideActive) {
+                                        smoothedAmbientIntensity = smoothedAmbientIntensity * 0.95f + pixelIntensity * 0.05f
+                                        val targetColor = if (smoothedAmbientIntensity > 0.45f) LineColorOption.BLACK else LineColorOption.WHITE
+                                        if (guidesState.colorOption != targetColor) {
+                                            val now = System.currentTimeMillis()
+                                            if (now - lastAutoColorChangeTime > 1500L) {
+                                                guidesState.colorOption = targetColor
+                                                lastAutoColorChangeTime = now
+                                            }
+                                        }
+                                    }
                                 } else {
                                     surfaceState.isLowLight = frame.camera.trackingFailureReason == TrackingFailureReason.INSUFFICIENT_LIGHT
                                 }
@@ -1205,7 +1227,10 @@ fun ARScreen(
                             transform = transform,
                             crop = crop,
                             isRulerEnabled = isRulerEnabled,
-                            paperLockState = paperLockState
+                            paperLockState = paperLockState,
+                            guidesState = if (guidesState.isAnyGuideActive) guidesState else null,
+                            zoomScale = zoomState.scale,
+                            ambientIntensity = smoothedAmbientIntensity
                         )
                         if (overlayNode != null) {
                             sceneView.addChildNode(overlayNode)
@@ -1796,6 +1821,7 @@ fun ARScreen(
                         },
                         gridState = gridState,
                         onFocusActiveSection = { focusActiveSection() },
+                        guidesState = guidesState,
                         adjustments = adjustments,
                         onAdjustmentsChange = { adj ->
                             brightness = adj.brightness

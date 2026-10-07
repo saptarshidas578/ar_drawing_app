@@ -72,6 +72,72 @@ data class NormalizedCrop(
 }
 
 /**
+ * Normalized drawing guides configuration.
+ * Always stored in paper-normalized coordinates (0.0 to 1.0).
+ */
+data class NormalizedGuides(
+    val isGridEnabled: Boolean = false,
+    val gridMode: String = "COUNT", // COUNT or REAL_SIZE
+    val gridCols: Int = 4,
+    val gridRows: Int = 4,
+    val cellSizeCm: Float = 2.0f,
+    val showLabels: Boolean = true,
+    val showCenterH: Boolean = false,
+    val showCenterV: Boolean = false,
+    val showDiagonals: Boolean = false,
+    val showThirds: Boolean = false,
+    val showGoldenRatio: Boolean = false,
+    val colorName: String = "CYAN",
+    val thicknessDp: Float = 1.5f,
+    val opacity: Float = 0.7f,
+    val isAutoContrast: Boolean = false,
+    val moveWithImage: Boolean = false
+) {
+    fun toJson(): JSONObject = JSONObject().apply {
+        put("isGridEnabled", isGridEnabled)
+        put("gridMode", gridMode)
+        put("gridCols", gridCols)
+        put("gridRows", gridRows)
+        put("cellSizeCm", cellSizeCm.toDouble())
+        put("showLabels", showLabels)
+        put("showCenterH", showCenterH)
+        put("showCenterV", showCenterV)
+        put("showDiagonals", showDiagonals)
+        put("showThirds", showThirds)
+        put("showGoldenRatio", showGoldenRatio)
+        put("colorName", colorName)
+        put("thicknessDp", thicknessDp.toDouble())
+        put("opacity", opacity.toDouble())
+        put("isAutoContrast", isAutoContrast)
+        put("moveWithImage", moveWithImage)
+    }
+
+    companion object {
+        fun fromJson(json: JSONObject?): NormalizedGuides {
+            if (json == null) return NormalizedGuides()
+            return NormalizedGuides(
+                isGridEnabled = json.optBoolean("isGridEnabled", false),
+                gridMode = json.optString("gridMode", "COUNT"),
+                gridCols = json.optInt("gridCols", 4),
+                gridRows = json.optInt("gridRows", 4),
+                cellSizeCm = json.optDouble("cellSizeCm", 2.0).toFloat(),
+                showLabels = json.optBoolean("showLabels", true),
+                showCenterH = json.optBoolean("showCenterH", false),
+                showCenterV = json.optBoolean("showCenterV", false),
+                showDiagonals = json.optBoolean("showDiagonals", false),
+                showThirds = json.optBoolean("showThirds", false),
+                showGoldenRatio = json.optBoolean("showGoldenRatio", false),
+                colorName = json.optString("colorName", "CYAN"),
+                thicknessDp = json.optDouble("thicknessDp", 1.5).toFloat(),
+                opacity = json.optDouble("opacity", 0.7).toFloat(),
+                isAutoContrast = json.optBoolean("isAutoContrast", false),
+                moveWithImage = json.optBoolean("moveWithImage", false)
+            )
+        }
+    }
+}
+
+/**
  * ProjectData — complete persistent project configuration.
  */
 data class ProjectData(
@@ -101,7 +167,9 @@ data class ProjectData(
     // Advanced Transform, Paper & Measurement
     val crop: NormalizedCrop = NormalizedCrop(),
     val paperPresetName: String = "Custom",
-    val isRulerEnabled: Boolean = false
+    val isRulerEnabled: Boolean = false,
+    // Drawing Guides
+    val guides: NormalizedGuides = NormalizedGuides()
 ) {
     fun toJson(): String {
         val root = JSONObject()
@@ -137,6 +205,7 @@ data class ProjectData(
         root.put("crop", crop.toJson())
         root.put("paperPresetName", paperPresetName)
         root.put("isRulerEnabled", isRulerEnabled)
+        root.put("guides", guides.toJson())
 
         return root.toString(2)
     }
@@ -177,7 +246,8 @@ data class ProjectData(
                     smoothingMode = root.optString("smoothingMode", "LOW"),
                     crop = NormalizedCrop.fromJson(root.optJSONObject("crop")),
                     paperPresetName = root.optString("paperPresetName", "Custom"),
-                    isRulerEnabled = root.optBoolean("isRulerEnabled", false)
+                    isRulerEnabled = root.optBoolean("isRulerEnabled", false),
+                    guides = NormalizedGuides.fromJson(root.optJSONObject("guides"))
                 )
             } catch (e: Exception) {
                 null
@@ -185,3 +255,4 @@ data class ProjectData(
         }
     }
 }
+
