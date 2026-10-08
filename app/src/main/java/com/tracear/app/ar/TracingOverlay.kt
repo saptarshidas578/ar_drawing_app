@@ -50,6 +50,7 @@ fun createTracingOverlayNode(
     debugMode: Boolean = false,
     gridState: GridState? = null,
     linesBitmap: Bitmap? = null,
+    tonalBitmap: Bitmap? = null,
     adjustments: ImageAdjustments? = null,
     poseFilter: PoseFilter? = null,
     transform: com.tracear.app.data.NormalizedTransform? = null,
@@ -62,7 +63,7 @@ fun createTracingOverlayNode(
 ): AnchorNode? {
     if (localCorners.size < 4) return null
 
-    val effectiveBitmap = linesBitmap ?: bitmap
+    val effectiveBitmap = tonalBitmap ?: (linesBitmap ?: bitmap)
 
     return try {
         // 1. Sort clockwise: TL, TR, BR, BL in plane local space
@@ -89,7 +90,7 @@ fun createTracingOverlayNode(
             paperHeightMeters = paperHeightMeters,
             gridState = gridState,
             debugMode = debugMode,
-            adjustments = if (linesBitmap == null) adjustments else null,
+            adjustments = if (linesBitmap == null && tonalBitmap == null) adjustments else null,
             transform = transform,
             crop = crop,
             isRulerEnabled = isRulerEnabled,

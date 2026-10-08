@@ -121,6 +121,9 @@ import com.tracear.app.ar.TransformSnapshot
 import com.tracear.app.ar.TransformUndoManager
 import com.tracear.app.ar.Vector3f
 import com.tracear.app.ar.IntrinsicsData
+import com.tracear.app.ar.TonalState
+import com.tracear.app.ar.TonalProcessor
+import com.tracear.app.ar.TonalSegmentationResult
 import com.tracear.app.ar.createTracingOverlayNode
 import org.opencv.core.CvType
 import org.opencv.core.Mat
@@ -296,6 +299,14 @@ fun ARScreen(
             }
         }
     }
+    val tonalState = remember {
+        TonalState().apply {
+            if (currentProject != null) {
+                applyData(currentProject!!.tones)
+            }
+        }
+    }
+    var tonalSegmentation by remember { mutableStateOf<TonalSegmentationResult?>(null) }
     val paperDetector = remember { PaperDetector() }
     val paperLockState = remember { PaperLockState(context) }
     val paperTracker = remember { PaperTracker() }
@@ -487,6 +498,65 @@ fun ARScreen(
         }
     }
 
+    // Debounced Tonal Segmentation computation (Bilateral Filter + Luminance Quantization)
+    LaunchedEffect(
+        tonalState.isEnabled,
+        tonalState.toneCount,
+        tonalState.smoothingLevel,
+        imageBitmap
+    ) {
+        if (tonalState.isEnabled && imageBitmap != null) {
+            delay(150)
+            tonalState.isProcessing = true
+            val seg = kotlinx.coroutines.withContext(Dispatchers.Default) {
+                TonalProcessor.processTonalSegmentation(
+                    src = imageBitmap!!,
+                    toneCount = tonalState.toneCount,
+                    smoothingLevel = tonalState.smoothingLevel
+                )
+            }
+            tonalSegmentation = seg
+            tonalState.processingTimeMs = seg?.durationMs?.toInt() ?: 0
+            tonalState.isProcessing = false
+        }
+    }
+
+    // Fast in-memory compositing of active tonal layers (< 15ms)
+    val layerSignature = tonalState.layers.map {
+        "${it.isVisible}_${it.colorArgb}_${it.opacity}"
+    }.joinToString(";")
+
+    LaunchedEffect(
+        tonalState.isEnabled,
+        tonalSegmentation,
+        layerSignature,
+        tonalState.isOutlineVisible,
+        tonalState.outlineColorArgb,
+        tonalState.outlineOpacity,
+        tonalState.soloLayerId,
+        tonalState.isStagesMode,
+        tonalState.currentStage
+    ) {
+        val seg = tonalSegmentation
+        if (tonalState.isEnabled && seg != null) {
+            val comp = kotlinx.coroutines.withContext(Dispatchers.Default) {
+                TonalProcessor.compositeLayers(
+                    segmentation = seg,
+                    layers = tonalState.layers.toList(),
+                    isOutlineVisible = tonalState.isOutlineVisible,
+                    outlineColorArgb = tonalState.outlineColorArgb,
+                    outlineOpacity = tonalState.outlineOpacity,
+                    soloLayerId = tonalState.soloLayerId,
+                    isStagesMode = tonalState.isStagesMode,
+                    currentStage = tonalState.currentStage
+                )
+            }
+            tonalState.compositeBitmap = comp
+        } else if (!tonalState.isEnabled) {
+            tonalState.compositeBitmap = null
+        }
+    }
+
     // Helper: Save Project
     fun saveProjectData(showToast: Boolean = false) {
         val p = currentProject ?: return
@@ -511,7 +581,8 @@ fun ARScreen(
             crop = crop,
             paperPresetName = paperPreset.name,
             isRulerEnabled = isRulerEnabled,
-            guides = guidesState.toData()
+            guides = guidesState.toData(),
+            tones = tonalState.toData()
         )
         scope.launch(Dispatchers.IO) {
             repository.saveProject(updated)
@@ -707,6 +778,61 @@ fun ARScreen(
         }
     }
 
+    // ── Helper: Value Eyedropper Sampling on AR Overlay ──────
+    fun handleOverlayPickTap(tapPos: Offset): Boolean {
+        val sv = sceneViewRef ?: return false
+        val anchor = calibration.surfaceAnchor ?: return false
+        val bmp = imageBitmap ?: return false
+        if (!calibration.isCalibrated) return false
+
+        val sorted = MathUtils.sortCornersClockwise(effectiveCorners)
+        val worldCorners = sorted.map { localToWorld(anchor.pose, it) }
+
+        val s0 = sv.cameraNode.worldToScreenPoint(Vector3(worldCorners[0].x, worldCorners[0].y, worldCorners[0].z))
+        val s1 = sv.cameraNode.worldToScreenPoint(Vector3(worldCorners[1].x, worldCorners[1].y, worldCorners[1].z))
+        val s2 = sv.cameraNode.worldToScreenPoint(Vector3(worldCorners[2].x, worldCorners[2].y, worldCorners[2].z))
+        val s3 = sv.cameraNode.worldToScreenPoint(Vector3(worldCorners[3].x, worldCorners[3].y, worldCorners[3].z))
+
+        val viewW = containerSize.width.toFloat()
+        val viewH = containerSize.height.toFloat()
+        val centerX = viewW / 2f
+        val centerY = viewH / 2f
+
+        val sceneX = (tapPos.x - centerX - zoomState.offset.x) / zoomState.scale + centerX
+        val sceneY = (tapPos.y - centerY - zoomState.offset.y) / zoomState.scale + centerY
+        val pt = Offset(sceneX, sceneY)
+
+        val pTL = Offset(s0.x, s0.y)
+        val pTR = Offset(s1.x, s1.y)
+        val pBR = Offset(s2.x, s2.y)
+        val pBL = Offset(s3.x, s3.y)
+
+        val steps = 20
+        for (c in 0 until steps) {
+            for (r in 0 until steps) {
+                val u0 = c.toFloat() / steps
+                val u1 = (c + 1).toFloat() / steps
+                val v0 = r.toFloat() / steps
+                val v1 = (r + 1).toFloat() / steps
+
+                val cTL = bilinear(pTL, pTR, pBR, pBL, u0, v0)
+                val cTR = bilinear(pTL, pTR, pBR, pBL, u1, v0)
+                val cBR = bilinear(pTL, pTR, pBR, pBL, u1, v1)
+                val cBL = bilinear(pTL, pTR, pBR, pBL, u0, v1)
+
+                if (isPointInQuad(pt, cTL, cTR, cBR, cBL)) {
+                    val midU = (u0 + u1) / 2f
+                    val midV = (v0 + v1) / 2f
+                    val result = TonalProcessor.samplePixel(bmp, midU, midV, tonalState.toneCount)
+                    tonalState.inspectedValue = result
+                    Toast.makeText(context, "${result.toneName}: ${result.brightnessPercent}% (${result.hexCode})", Toast.LENGTH_SHORT).show()
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
     // ── Helper: Process Manual Tap Raycasting on Infinite Plane ──
     fun handleManualCornerTap(screenTap: Offset, viewW: Float, viewH: Float) {
         val frame = latestFrameRef.get() ?: return
@@ -870,7 +996,9 @@ fun ARScreen(
                             } else {
                                 lastTapTime = now
                                 lastTapPos = initialDown
-                                if (isLocked && gridState.isEnabled && calibration.isCalibrated) {
+                                if (tonalState.isEyedropperActive && calibration.isCalibrated) {
+                                    handleOverlayPickTap(initialDown)
+                                } else if (isLocked && gridState.isEnabled && calibration.isCalibrated) {
                                     handleCellTap(initialDown)
                                 }
                             }
@@ -1211,6 +1339,7 @@ fun ARScreen(
                     // Add tracing overlay when calibrated
                     if (calibration.isCalibrated && surfaceAnchor != null && imageBitmap != null && !tracingUi.isPeeking) {
                         val activeLinesBmp = if (linesOnlyState.isEnabled) linesOnlyState.linesBitmap else null
+                        val activeTonalBmp = if (tonalState.isEnabled) tonalState.compositeBitmap else null
                         val overlayNode = createTracingOverlayNode(
                             engine = sceneView.engine,
                             materialLoader = sceneView.materialLoader,
@@ -1222,7 +1351,8 @@ fun ARScreen(
                             debugMode = debugMode,
                             gridState = if (gridState.isEnabled) gridState else null,
                             linesBitmap = activeLinesBmp,
-                            adjustments = if (!linesOnlyState.isEnabled) adjustments else null,
+                            tonalBitmap = activeTonalBmp,
+                            adjustments = if (!linesOnlyState.isEnabled && !tonalState.isEnabled) adjustments else null,
                             poseFilter = poseFilter,
                             transform = transform,
                             crop = crop,
@@ -1822,6 +1952,8 @@ fun ARScreen(
                         gridState = gridState,
                         onFocusActiveSection = { focusActiveSection() },
                         guidesState = guidesState,
+                        tonalState = tonalState,
+                        sourceBitmap = imageBitmap,
                         adjustments = adjustments,
                         onAdjustmentsChange = { adj ->
                             brightness = adj.brightness

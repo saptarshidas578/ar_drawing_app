@@ -45,12 +45,12 @@ fun TracingDock(
         // --- Portrait: Horizontal Bottom Dock ---
         Row(
             modifier = modifier
-                .fillMaxWidth(0.96f)
+                .fillMaxWidth(0.98f)
                 .height(58.dp)
                 .clip(RoundedCornerShape(22.dp))
                 .background(Color(0xDD161B22))
                 .border(0.5.dp, Color(0x33FFFFFF), RoundedCornerShape(22.dp))
-                .padding(horizontal = 4.dp, vertical = 3.dp),
+                .padding(horizontal = 2.dp, vertical = 3.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {

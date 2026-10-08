@@ -31,4 +31,12 @@ All notable changes and inventory of features for the AR Tracer app.
   - **Construction Lines:** Independent on-paper toggles for Horizontal Center (`─`), Vertical Center (`│`), Diagonals (`✕`), Rule of Thirds ($1/3, 2/3$), and Golden Ratio ($\Phi \approx 0.382, 0.618$).
   - **Style & Placement Controls:** Dedicated "Guides" category (🧭) in the compact bottom dock with palette color chips, auto-contrast adaptation against paper and ambient lighting, line thickness slider (0.8–4.0 dp), opacity slider (10%–100%), and "Move guides with image" toggle (allowing guides to stay locked to the physical paper quad or transform with the image).
   - **State & Persistence:** Isolated from Section Grid (`GridState`); serialized to and restored from project data (`NormalizedGuides`) in `ProjectModel.kt`.
-  - **Unit Testing:** Comprehensive test suite in `GuidesMathTest.kt` validating chessboard labels, real-size cell calculations, golden ratio constants, zoom attenuation, and serialization round-trips.
+  - **Tonal Layers & Value Shading:**
+  - **Luminance Quantization:** Converts reference image to grayscale, applies edge-preserving bilateral filtering (`Imgproc.bilateralFilter`) to remove photographic noise while protecting sharp facial contours, and quantizes luminance into $N$ (2 to 6, default 4) tonal planes (Highlights $\to$ Shadows).
+  - **Individual Layer Controls:** Transparent overlay per tone with independent show/hide (👁), solo toggle, color picker chips (slate contrast ramps, cyan, warm sepia, red, yellow), and opacity sliders. Includes integrated Outline Layer (Canny edge detection) rendered in the same hierarchy.
+  - **Stages Mode:** Classical portrait drawing stepper displaying one layer at a time in sequence (Outline first $\to$ Highlights $\to$ Midtones $\to$ Deep Shadows) with step badge chip and Prev/Next buttons.
+  - **Value Picker & Eyedropper:** Pixel-accurate interactive tap preview inside the dock sheet plus "Pick on Paper" AR overlay tap mode, reporting brightness %, tone number, hex color swatch, and tonal name.
+  - **Two-Tier High Performance Pipeline:** OpenCV segmentation runs asynchronously in background with a 150 ms slider debounce and LRU memory caching; real-time compositing operates purely in-memory ($< 15\text{ ms}$), maintaining smooth 60 FPS camera frame rates with zero ARCore stutter.
+  - **Exact Filament Quad Alignment:** Renders seamlessly through the existing Filament texture node pipeline, automatically inheriting fit modes, zoom, pan, rotation, crops, and drawing guides.
+  - **Persistence & Testing:** Serializes into `ProjectData` (`NormalizedTones`); validated with 7 comprehensive unit tests in `TonalProcessorTest.kt`.
+

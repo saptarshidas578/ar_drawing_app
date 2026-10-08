@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -50,6 +51,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import com.tracear.app.ar.FitMode
 import com.tracear.app.ar.GridState
 import com.tracear.app.ar.GuideGridMode
@@ -61,6 +67,10 @@ import com.tracear.app.ar.LinesOnlyState
 import com.tracear.app.ar.PaperMath
 import com.tracear.app.ar.PaperPreset
 import com.tracear.app.ar.SmoothingMode
+import com.tracear.app.ar.TonalLayerConfig
+import com.tracear.app.ar.TonalMath
+import com.tracear.app.ar.TonalProcessor
+import com.tracear.app.ar.TonalState
 import com.tracear.app.data.NormalizedCrop
 import com.tracear.app.data.NormalizedTransform
 import kotlin.math.roundToInt
@@ -110,6 +120,9 @@ fun TracingCategorySheet(
     onFocusActiveSection: () -> Unit,
     // Guides
     guidesState: GuidesState? = null,
+    // Tones
+    tonalState: TonalState? = null,
+    sourceBitmap: Bitmap? = null,
     // Adjust
     adjustments: ImageAdjustments,
     onAdjustmentsChange: (ImageAdjustments) -> Unit,
@@ -283,6 +296,15 @@ fun TracingCategorySheet(
                             guidesState = guidesState,
                             paperWidthMeters = paperWidthMeters,
                             paperHeightMeters = paperHeightMeters,
+                            onInteract = onInteract
+                        )
+                    }
+                }
+                DockCategory.TONES -> {
+                    if (tonalState != null) {
+                        TonesSheetContent(
+                            tonalState = tonalState,
+                            sourceBitmap = sourceBitmap,
                             onInteract = onInteract
                         )
                     }
@@ -2226,5 +2248,526 @@ private fun GuideToggleChip(
             fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
             color = if (isActive) Color.White else Color(0xFFC9D1D9)
         )
+    }
+}
+
+// =====================================================================
+// Category: Tones (Tonal Layers & Value Shading)
+// =====================================================================
+@Composable
+private fun TonesSheetContent(
+    tonalState: TonalState,
+    sourceBitmap: Bitmap?,
+    onInteract: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        // ── Card 1: Tonal Mode & Segmentation ──
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xFF21262D))
+                .padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "Tonal Shading Layers",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = if (tonalState.isEnabled) "Split into ${tonalState.toneCount} shade planes" else "Disabled (showing photo)",
+                        color = if (tonalState.isEnabled) Color(0xFF00E5FF) else Color(0xFF8B949E),
+                        fontSize = 10.sp
+                    )
+                }
+
+                Button(
+                    onClick = {
+                        onInteract()
+                        tonalState.isEnabled = !tonalState.isEnabled
+                    },
+                    modifier = Modifier.height(28.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (tonalState.isEnabled) Color(0xFF1F6FEB) else Color(0xFF30363D)
+                    )
+                ) {
+                    Text(
+                        text = if (tonalState.isEnabled) "Enabled ✓" else "Enable",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            }
+
+            if (tonalState.isEnabled) {
+                // Tone Count Slider (2 to 6)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Tone Count", color = Color(0xFF8B949E), fontSize = 11.sp)
+                    Text("${tonalState.toneCount} Tones", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+                Slider(
+                    value = tonalState.toneCount.toFloat(),
+                    onValueChange = {
+                        onInteract()
+                        tonalState.updateToneCount(it.roundToInt().coerceIn(2, 6))
+                    },
+                    valueRange = 2f..6f,
+                    steps = 3,
+                    modifier = Modifier.fillMaxWidth().height(24.dp),
+                    colors = SliderDefaults.colors(thumbColor = Color(0xFF00E5FF), activeTrackColor = Color(0xFF00E5FF))
+                )
+
+                // Smoothing Slider (0.1 to 1.0)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Edge Smoothing", color = Color(0xFF8B949E), fontSize = 11.sp)
+                    Text("${(tonalState.smoothingLevel * 100).toInt()}%", color = Color.White, fontSize = 11.sp)
+                }
+                Slider(
+                    value = tonalState.smoothingLevel,
+                    onValueChange = {
+                        onInteract()
+                        tonalState.smoothingLevel = it.coerceIn(0.1f, 1.0f)
+                    },
+                    valueRange = 0.1f..1.0f,
+                    modifier = Modifier.fillMaxWidth().height(24.dp),
+                    colors = SliderDefaults.colors(thumbColor = Color(0xFF58A6FF), activeTrackColor = Color(0xFF58A6FF))
+                )
+
+                // Processing status
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (tonalState.isProcessing) {
+                        Text("⏳ Segmenting tones...", color = Color(0xFF58A6FF), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    } else if (tonalState.processingTimeMs > 0) {
+                        Text("⚡ Processed in ${tonalState.processingTimeMs}ms", color = Color(0xFF7EE787), fontSize = 10.sp)
+                    }
+                }
+            }
+        }
+
+        if (tonalState.isEnabled) {
+            // ── Card 2: Stages Mode Stepper ──
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF21262D))
+                    .padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("Stages Mode", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("Trace one shade at a time", color = Color(0xFF8B949E), fontSize = 10.sp)
+                    }
+                    Button(
+                        onClick = {
+                            onInteract()
+                            tonalState.isStagesMode = !tonalState.isStagesMode
+                        },
+                        modifier = Modifier.height(26.dp),
+                        shape = RoundedCornerShape(6.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (tonalState.isStagesMode) Color(0xFF238636) else Color(0xFF30363D)
+                        )
+                    ) {
+                        Text(
+                            text = if (tonalState.isStagesMode) "Active ✓" else "Off",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+                }
+
+                if (tonalState.isStagesMode) {
+                    // Stepper row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Button(
+                            onClick = {
+                                onInteract()
+                                tonalState.prevStage()
+                            },
+                            enabled = tonalState.currentStage > 0,
+                            modifier = Modifier.height(28.dp),
+                            shape = RoundedCornerShape(6.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF30363D))
+                        ) {
+                            Text("◀ Prev", fontSize = 10.sp, color = Color.White)
+                        }
+
+                        // Current Stage Chip
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(0xFF1F6FEB))
+                                .padding(horizontal = 10.dp, vertical = 4.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = tonalState.currentStageLabel,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+
+                        Button(
+                            onClick = {
+                                onInteract()
+                                tonalState.nextStage()
+                            },
+                            enabled = tonalState.currentStage < tonalState.toneCount,
+                            modifier = Modifier.height(28.dp),
+                            shape = RoundedCornerShape(6.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF30363D))
+                        ) {
+                            Text("Next ▶", fontSize = 10.sp, color = Color.White)
+                        }
+                    }
+                }
+            }
+
+            // ── Card 3: Layer List Controls ──
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF21262D))
+                    .padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Layers", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    if (tonalState.soloLayerId != null) {
+                        Text(
+                            text = "Unsolo All",
+                            color = Color(0xFFF0883E),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable {
+                                onInteract()
+                                tonalState.soloLayerId = null
+                            }
+                        )
+                    }
+                }
+
+                // Outline layer row
+                TonalLayerRow(
+                    name = "Outline Layer (Edges)",
+                    isVisible = tonalState.isOutlineVisible,
+                    isSolo = tonalState.soloLayerId == -1,
+                    colorArgb = tonalState.outlineColorArgb,
+                    opacity = tonalState.outlineOpacity,
+                    onToggleVisible = {
+                        onInteract()
+                        tonalState.isOutlineVisible = !tonalState.isOutlineVisible
+                    },
+                    onToggleSolo = {
+                        onInteract()
+                        tonalState.toggleSolo(-1)
+                    },
+                    onColorChange = {
+                        onInteract()
+                        tonalState.outlineColorArgb = it
+                    },
+                    onOpacityChange = {
+                        onInteract()
+                        tonalState.outlineOpacity = it
+                    }
+                )
+
+                // Tone layers rows
+                tonalState.layers.forEach { layer ->
+                    TonalLayerRow(
+                        name = layer.name,
+                        isVisible = layer.isVisible,
+                        isSolo = tonalState.soloLayerId == layer.index,
+                        colorArgb = layer.colorArgb,
+                        opacity = layer.opacity,
+                        onToggleVisible = {
+                            onInteract()
+                            layer.isVisible = !layer.isVisible
+                        },
+                        onToggleSolo = {
+                            onInteract()
+                            tonalState.toggleSolo(layer.index)
+                        },
+                        onColorChange = {
+                            onInteract()
+                            layer.colorArgb = it
+                        },
+                        onOpacityChange = {
+                            onInteract()
+                            layer.opacity = it
+                        }
+                    )
+                }
+            }
+
+            // ── Card 4: Value Eyedropper & Inspector ──
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF21262D))
+                    .padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Value Eyedropper", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Box(
+                        modifier = Modifier
+                            .height(24.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (tonalState.isEyedropperActive) Color(0xFF1F6FEB) else Color(0xFF30363D))
+                            .clickable {
+                                onInteract()
+                                tonalState.isEyedropperActive = !tonalState.isEyedropperActive
+                            }
+                            .padding(horizontal = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (tonalState.isEyedropperActive) "AR Pick Mode ✓" else "Pick on Paper",
+                            fontSize = 10.sp,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                // Reference image preview for direct tap inspection
+                if (sourceBitmap != null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(110.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.Black)
+                            .pointerInput(sourceBitmap) {
+                                detectTapGestures { offset ->
+                                    val u = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                    val v = (offset.y / size.height.toFloat()).coerceIn(0f, 1f)
+                                    tonalState.inspectedValue = TonalProcessor.samplePixel(sourceBitmap, u, v, tonalState.toneCount)
+                                    onInteract()
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Image(
+                            bitmap = sourceBitmap.asImageBitmap(),
+                            contentDescription = "Tap to inspect value",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Fit
+                        )
+                    }
+                }
+
+                // Inspected value readout
+                val result = tonalState.inspectedValue
+                if (result != null) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF161B22))
+                            .padding(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color(result.colorArgb))
+                                .border(1.dp, Color(0xFF8B949E), RoundedCornerShape(6.dp))
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = "${result.toneName} • Tone ${result.toneIndex + 1} of ${tonalState.toneCount}",
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Brightness: ${result.brightnessPercent}% • Hex: ${result.hexCode}",
+                                color = Color(0xFF58A6FF),
+                                fontSize = 10.sp
+                            )
+                        }
+                    }
+                } else {
+                    Text(
+                        text = "Tap anywhere on the photo above to inspect brightness & tone.",
+                        color = Color(0xFF8B949E),
+                        fontSize = 10.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TonalLayerRow(
+    name: String,
+    isVisible: Boolean,
+    isSolo: Boolean,
+    colorArgb: Int,
+    opacity: Float,
+    onToggleVisible: () -> Unit,
+    onToggleSolo: () -> Unit,
+    onColorChange: (Int) -> Unit,
+    onOpacityChange: (Float) -> Unit
+) {
+    val palette = listOf(
+        0xFFCBD5E1.toInt(), // Slate 300
+        0xFF94A3B8.toInt(), // Slate 400
+        0xFF64748B.toInt(), // Slate 500
+        0xFF334155.toInt(), // Slate 700
+        0xFF0F172A.toInt(), // Slate 900
+        0xFF00E5FF.toInt(), // Cyan
+        0xFFFFD600.toInt(), // Yellow
+        0xFFFF3D00.toInt(), // Red
+        0xFF8D6E63.toInt()  // Sepia
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFF161B22))
+            .padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = name,
+                color = if (isVisible) Color.White else Color(0xFF8B949E),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                // Solo button
+                Box(
+                    modifier = Modifier
+                        .height(22.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(if (isSolo) Color(0xFF1F6FEB) else Color(0xFF30363D))
+                        .clickable { onToggleSolo() }
+                        .padding(horizontal = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (isSolo) "Solo ✓" else "Solo",
+                        fontSize = 9.sp,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                // Visibility Eye button
+                Box(
+                    modifier = Modifier
+                        .size(22.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(if (isVisible) Color(0xFF238636) else Color(0xFF30363D))
+                        .clickable { onToggleVisible() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (isVisible) "👁" else "✕",
+                        fontSize = 10.sp,
+                        color = Color.White
+                    )
+                }
+            }
+        }
+
+        // Color chips & Opacity row
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                palette.take(6).forEach { col ->
+                    val isSel = colorArgb == col
+                    Box(
+                        modifier = Modifier
+                            .size(16.dp)
+                            .clip(CircleShape)
+                            .background(Color(col))
+                            .border(
+                                width = if (isSel) 2.dp else 0.5.dp,
+                                color = if (isSel) Color(0xFF58A6FF) else Color(0xFF484F58),
+                                shape = CircleShape
+                            )
+                            .clickable { onColorChange(col) }
+                    )
+                }
+            }
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("${(opacity * 100).toInt()}%", fontSize = 9.sp, color = Color(0xFF8B949E))
+                Slider(
+                    value = opacity,
+                    onValueChange = { onOpacityChange(it) },
+                    valueRange = 0.1f..1.0f,
+                    modifier = Modifier.width(90.dp).height(20.dp),
+                    colors = SliderDefaults.colors(thumbColor = Color(0xFF58A6FF), activeTrackColor = Color(0xFF58A6FF))
+                )
+            }
+        }
     }
 }

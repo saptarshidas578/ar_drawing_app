@@ -169,7 +169,9 @@ data class ProjectData(
     val paperPresetName: String = "Custom",
     val isRulerEnabled: Boolean = false,
     // Drawing Guides
-    val guides: NormalizedGuides = NormalizedGuides()
+    val guides: NormalizedGuides = NormalizedGuides(),
+    // Tonal Layers
+    val tones: NormalizedTones = NormalizedTones()
 ) {
     fun toJson(): String {
         val root = JSONObject()
@@ -206,6 +208,7 @@ data class ProjectData(
         root.put("paperPresetName", paperPresetName)
         root.put("isRulerEnabled", isRulerEnabled)
         root.put("guides", guides.toJson())
+        root.put("tones", tones.toJson())
 
         return root.toString(2)
     }
@@ -247,11 +250,91 @@ data class ProjectData(
                     crop = NormalizedCrop.fromJson(root.optJSONObject("crop")),
                     paperPresetName = root.optString("paperPresetName", "Custom"),
                     isRulerEnabled = root.optBoolean("isRulerEnabled", false),
-                    guides = NormalizedGuides.fromJson(root.optJSONObject("guides"))
+                    guides = NormalizedGuides.fromJson(root.optJSONObject("guides")),
+                    tones = NormalizedTones.fromJson(root.optJSONObject("tones"))
                 )
             } catch (e: Exception) {
                 null
             }
+        }
+    }
+}
+
+/**
+ * Normalized tonal layers configuration for shading and portrait drawing.
+ */
+data class NormalizedTones(
+    val isEnabled: Boolean = false,
+    val toneCount: Int = 4,
+    val smoothingLevel: Float = 0.5f,
+    val layerVisibilities: List<Boolean> = emptyList(),
+    val layerColors: List<Int> = emptyList(),
+    val layerOpacities: List<Float> = emptyList(),
+    val isOutlineVisible: Boolean = true,
+    val outlineColorArgb: Int = 0xFF00E5FF.toInt(),
+    val outlineOpacity: Float = 1.0f,
+    val isStagesMode: Boolean = false,
+    val currentStage: Int = 0
+) {
+    fun toJson(): JSONObject = JSONObject().apply {
+        put("isEnabled", isEnabled)
+        put("toneCount", toneCount)
+        put("smoothingLevel", smoothingLevel.toDouble())
+
+        val visArray = JSONArray()
+        layerVisibilities.forEach { visArray.put(it) }
+        put("layerVisibilities", visArray)
+
+        val colArray = JSONArray()
+        layerColors.forEach { colArray.put(it) }
+        put("layerColors", colArray)
+
+        val opArray = JSONArray()
+        layerOpacities.forEach { opArray.put(it.toDouble()) }
+        put("layerOpacities", opArray)
+
+        put("isOutlineVisible", isOutlineVisible)
+        put("outlineColorArgb", outlineColorArgb)
+        put("outlineOpacity", outlineOpacity.toDouble())
+        put("isStagesMode", isStagesMode)
+        put("currentStage", currentStage)
+    }
+
+    companion object {
+        fun fromJson(json: JSONObject?): NormalizedTones {
+            if (json == null) return NormalizedTones()
+
+            val visList = mutableListOf<Boolean>()
+            val visArr = json.optJSONArray("layerVisibilities")
+            if (visArr != null) {
+                for (i in 0 until visArr.length()) visList.add(visArr.optBoolean(i, true))
+            }
+
+            val colList = mutableListOf<Int>()
+            val colArr = json.optJSONArray("layerColors")
+            if (colArr != null) {
+                for (i in 0 until colArr.length()) colList.add(colArr.optInt(i))
+            }
+
+            val opList = mutableListOf<Float>()
+            val opArr = json.optJSONArray("layerOpacities")
+            if (opArr != null) {
+                for (i in 0 until opArr.length()) opList.add(opArr.optDouble(i, 0.7).toFloat())
+            }
+
+            return NormalizedTones(
+                isEnabled = json.optBoolean("isEnabled", false),
+                toneCount = json.optInt("toneCount", 4),
+                smoothingLevel = json.optDouble("smoothingLevel", 0.5).toFloat(),
+                layerVisibilities = visList,
+                layerColors = colList,
+                layerOpacities = opList,
+                isOutlineVisible = json.optBoolean("isOutlineVisible", true),
+                outlineColorArgb = json.optInt("outlineColorArgb", 0xFF00E5FF.toInt()),
+                outlineOpacity = json.optDouble("outlineOpacity", 1.0).toFloat(),
+                isStagesMode = json.optBoolean("isStagesMode", false),
+                currentStage = json.optInt("currentStage", 0)
+            )
         }
     }
 }
