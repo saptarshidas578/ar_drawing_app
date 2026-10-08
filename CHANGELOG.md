@@ -53,5 +53,10 @@ All notable changes and inventory of features for the AR Tracer app.
   - **Bitmap Allocation Optimization:** Added immediate `finalBitmap.recycle()` after GPU texture upload in `prepareBitmap` pipeline, preventing multi-megabyte heap retention during slider adjustments.
   - **Battery & Thermal Management:** Automatically shut off ARCore LED torch on `Lifecycle.Event.ON_PAUSE` to eliminate hardware battery drain and overheating when minimizing the app or turning off the screen.
   - **Pure Logic Test Suite Expansion:** Added comprehensive edge-case unit tests in `MathUtilsTest.kt` verifying behavior with empty corner lists, fewer than 4 corners, collinear points, singular matrix inversion, and camera pixel unprojection behind the lens.
+- **Release Preparation & Store Readiness:**
+  - **R8 Minification & Resource Shrinking:** Enabled `isMinifyEnabled = true` and `isShrinkResources = true` in `release` build type with tailored ProGuard keep rules for Google ARCore, SceneView, Filament JNI, and OpenCV.
+  - **Secure Keystore Signing Pipeline:** Implemented `keystore.properties` loader with debug signing fallback in `app/build.gradle.kts`. Secured `.gitignore` against accidental keystore or credentials commits (`*.jks`, `*.keystore`, `keystore.properties`).
+  - **Release Artifacts Generation:** Verified clean generation of release universal APK (`app-release.apk`, 165 MB) for sideloading/friend testing and optimized Android App Bundle (`app-release.aab`, 77.6 MB) for Play Store deployment.
+  - **Play Store & Privacy Documentation:** Created `/release` documentation suite including `PRIVACY_POLICY.md` (100% on-device, zero network permissions), `PLAY_STORE_LISTING.md` (title, 72-char short description, full description), `SCREENSHOT_GUIDE.md` (8-screen storyboard), `DATA_SAFETY_CHEAT_SHEET.md` (verified Play Console form answers), and `PRE_RELEASE_CHECKLIST.md` (manual testing protocols and Google Play Console new account requirements).
 
 

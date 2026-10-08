@@ -11,3 +11,9 @@
 local.properties
 .kotlin
 scratch_aar/
+
+# Keystores & Signing Secrets (Never commit private keys!)
+*.jks
+*.keystore
+keystore.properties
+signing.properties

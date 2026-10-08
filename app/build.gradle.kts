@@ -1,4 +1,7 @@
 // app/build.gradle.kts — the main app module build configuration
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -12,18 +15,40 @@ android {
     defaultConfig {
         applicationId = "com.tracear.app"
         minSdk = 24          // Minimum for ARCore
-        targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        targetSdk = 35       // Always check the current required targetSdk in Google Play Console!
+        versionCode = 1      // Increment by 1 for EVERY new release upload to Google Play
+        versionName = "1.0.0" // User-visible semantic version
+    }
+
+    val keystorePropertiesFile = rootProject.file("keystore.properties")
+    val keystoreProperties = Properties()
+    if (keystorePropertiesFile.exists()) {
+        keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+    }
+
+    signingConfigs {
+        create("release") {
+            if (keystorePropertiesFile.exists()) {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            } else {
+                // Fallback to debug signing config for local testing and sharing test builds
+                initWith(getByName("debug"))
+            }
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
