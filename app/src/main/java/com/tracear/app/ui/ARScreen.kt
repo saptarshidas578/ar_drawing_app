@@ -202,6 +202,8 @@ fun ARScreen(
 
     // --- Camera Permission ---
     val cameraPermission = rememberPermissionState(Manifest.permission.CAMERA)
+    var isCameraPermissionRevoked by remember { mutableStateOf(false) }
+    var arSessionErrorMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         if (!cameraPermission.status.isGranted) {
@@ -209,10 +211,13 @@ fun ARScreen(
         }
     }
 
-    if (!cameraPermission.status.isGranted) {
+    if (!cameraPermission.status.isGranted || isCameraPermissionRevoked) {
         PermissionScreen(
             isPermanentlyDenied = cameraPermission.status.shouldShowRationale,
-            onRequestPermission = { cameraPermission.launchPermissionRequest() },
+            onRequestPermission = {
+                isCameraPermissionRevoked = false
+                cameraPermission.launchPermissionRequest()
+            },
             onBack = onBack
         )
         return
@@ -338,11 +343,26 @@ fun ARScreen(
             when (event) {
                 androidx.lifecycle.Lifecycle.Event.ON_PAUSE,
                 androidx.lifecycle.Lifecycle.Event.ON_STOP -> {
+                    if (isTorchOn) {
+                        try {
+                            arSessionRef?.let { session ->
+                                val config = session.config
+                                config.flashMode = Config.FlashMode.OFF
+                                session.configure(config)
+                            }
+                        } catch (ignored: Throwable) {}
+                        isTorchOn = false
+                    }
                     if (timelapseState.isRecording && !timelapseState.isPaused) {
                         timelapseState.pauseRecording("App minimized")
                     }
                 }
                 androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
+                    val hasPerm = androidx.core.content.ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.CAMERA
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    isCameraPermissionRevoked = !hasPerm
                     if (timelapseState.isRecording && timelapseState.isPaused && timelapseState.userMessage == "App minimized") {
                         timelapseState.resumeRecording()
                     }
@@ -1528,14 +1548,20 @@ fun ARScreen(
                             }
                             true
                         }
+
+                        onSessionFailed = { exception ->
+                            Log.e("TraceAR", "AR session failed: ${exception.message}", exception)
+                            arSessionErrorMessage = exception.localizedMessage ?: "AR session could not start. Please ensure camera is available."
+                        }
                     }
                 },
                 update = { sceneView ->
                     sceneViewRef = sceneView
                     sceneView.planeRenderer.isEnabled = !surfaceState.isPlaneLocked
 
-                    // Clear previously added AnchorNodes
+                    // Destroy & clear previously added AnchorNodes to release Filament GPU resources
                     sceneView.childNodes.filterIsInstance<AnchorNode>().forEach {
+                        it.destroy()
                         sceneView.removeChildNode(it)
                     }
 
@@ -1585,6 +1611,13 @@ fun ARScreen(
                             sceneView.addChildNode(overlayNode)
                         }
                     }
+                },
+                onRelease = { sceneView ->
+                    sceneView.childNodes.filterIsInstance<AnchorNode>().forEach {
+                        it.destroy()
+                        sceneView.removeChildNode(it)
+                    }
+                    sceneViewRef = null
                 }
             )
         }
@@ -2337,6 +2370,12 @@ fun ARScreen(
             confirmButton = {
                 Button(
                     onClick = {
+                        sceneViewRef?.let { sv ->
+                            sv.childNodes.filterIsInstance<AnchorNode>().forEach { node ->
+                                node.destroy()
+                                sv.removeChildNode(node)
+                            }
+                        }
                         calibration.reset()
                         surfaceState.reset()
                         gridState.reset()
@@ -2356,6 +2395,40 @@ fun ARScreen(
             dismissButton = {
                 TextButton(onClick = { showRecalibDialog = false }) {
                     Text("Cancel", color = Color(0xFF58A6FF))
+                }
+            },
+            containerColor = Color(0xFF1C2128),
+            shape = RoundedCornerShape(16.dp)
+        )
+    }
+
+    // --- AR Session Error Dialog ---
+    if (arSessionErrorMessage != null) {
+        AlertDialog(
+            onDismissRequest = { arSessionErrorMessage = null },
+            title = {
+                Text("AR Camera Error", color = Color.White, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Text(
+                    arSessionErrorMessage ?: "The AR camera session encountered an error. Please ensure camera access is granted and restart.",
+                    color = Color(0xFFC9D1D9)
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        arSessionErrorMessage = null
+                        onBack()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF238636))
+                ) {
+                    Text("Return to Projects", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { arSessionErrorMessage = null }) {
+                    Text("Dismiss", color = Color(0xFF58A6FF))
                 }
             },
             containerColor = Color(0xFF1C2128),

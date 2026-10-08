@@ -45,5 +45,13 @@ All notable changes and inventory of features for the AR Tracer app.
   - **Hardware-Accelerated MP4 Video Export:** Native `MediaCodec` (H.264 / `video/avc`) + `MediaMuxer` pipeline rendering frames through an EGL input surface at adjustable playback speeds (10 to 30 fps, default 24 fps) with real-time encoding progress, cancel support, and automatic temporary file cleanup.
   - **On-Screen Recording Indicator & Lifecycle:** Sleek blinking on-screen recording chip (`🔴 REC 00:35 • 7f`) that opens controls on tap, and automatically pauses on app minimize (`ON_PAUSE` / `ON_STOP`) and resumes on `ON_RESUME`.
   - **Unit Testing:** Comprehensive test suite in `ExportModelTest.kt` verifying frame naming, duration math, file formatting, even dimension constraints, and storage caps.
+- **Pre-Release Audit & Production Stabilization:**
+  - **Manifest & Store Readiness:** Declared `<uses-feature android:name="android.hardware.camera" android:required="true" />` in `AndroidManifest.xml` to fix Google Play / ChromeOS hardware compatibility requirements (resolving critical lint failure).
+  - **Memory Leak Detection:** Added LeakCanary 2.14 (`debugImplementation`) to debug builds for continuous runtime memory leak detection.
+  - **ARCore Lifecycle Resilience:** Implemented `onSessionFailed` callback in `ARSceneView` with user error dialog and graceful return navigation; added `ON_RESUME` camera permission revocation detection to prevent unhandled `SecurityException`s.
+  - **VRAM & Node Cleanup:** Created `TracingOverlayNode` extending `AnchorNode` with explicit Filament GPU resource destruction (`engine.destroyTexture`, `destroyVertexBuffer`, `destroyIndexBuffer`, `destroyMaterialInstance`); added `it.destroy()` invocation on removed nodes during sceneview updates, screen disposal (`onRelease`), and surface re-calibration.
+  - **Bitmap Allocation Optimization:** Added immediate `finalBitmap.recycle()` after GPU texture upload in `prepareBitmap` pipeline, preventing multi-megabyte heap retention during slider adjustments.
+  - **Battery & Thermal Management:** Automatically shut off ARCore LED torch on `Lifecycle.Event.ON_PAUSE` to eliminate hardware battery drain and overheating when minimizing the app or turning off the screen.
+  - **Pure Logic Test Suite Expansion:** Added comprehensive edge-case unit tests in `MathUtilsTest.kt` verifying behavior with empty corner lists, fewer than 4 corners, collinear points, singular matrix inversion, and camera pixel unprojection behind the lens.
 
 

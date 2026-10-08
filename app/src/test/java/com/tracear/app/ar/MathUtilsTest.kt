@@ -192,4 +192,47 @@ class MathUtilsTest {
         assertEquals(500f, proj!!.first, 1e-2f)
         assertEquals(500f, proj.second, 1e-2f)
     }
+
+    @Test
+    fun testSortCornersClockwise_IncompleteAndDegenerate() {
+        // Empty list should return empty list without crash
+        val empty = MathUtils.sortCornersClockwise(emptyList())
+        assertTrue(empty.isEmpty())
+
+        // Fewer than 4 points should return original list without crash
+        val twoPoints = listOf(Vector3f(0f, 0f, 0f), Vector3f(1f, 0f, 0f))
+        val sortedTwo = MathUtils.sortCornersClockwise(twoPoints)
+        assertEquals(2, sortedTwo.size)
+
+        // 4 collinear points
+        val collinear = listOf(
+            Vector3f(0f, 0f, 0f),
+            Vector3f(1f, 0f, 0f),
+            Vector3f(2f, 0f, 0f),
+            Vector3f(3f, 0f, 0f)
+        )
+        val sortedCollinear = MathUtils.sortCornersClockwise(collinear)
+        assertEquals(4, sortedCollinear.size)
+    }
+
+    @Test
+    fun testMatrixInversion_SingularMatrixReturnsFalse() {
+        val zeroMatrix = FloatArray(16) { 0f }
+        val inv = FloatArray(16)
+        val result = MathUtils.invertMatrix4(zeroMatrix, inv)
+        assertFalse(result)
+    }
+
+    @Test
+    fun testProjectWorldPointToCameraPixel_PointBehindCameraReturnsNull() {
+        val fx = 1000f; val fy = 1000f; val cx = 500f; val cy = 500f
+        // Camera at (0, 0, 0), looking along optical +Z (identity rotation)
+        val result = MathUtils.projectWorldPointToCameraPixel(
+            worldPoint = Vector3f(0f, 0f, -5f), // Behind camera in local coordinates
+            fx = fx, fy = fy, cx = cx, cy = cy,
+            camTx = 0f, camTy = 0f, camTz = 0f,
+            camQx = 0f, camQy = 0f, camQz = 0f, camQw = 1f
+        )
+        org.junit.Assert.assertNull(result)
+    }
 }

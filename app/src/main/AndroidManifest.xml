@@ -6,7 +6,8 @@
     <!-- Camera permission: required for AR -->
     <uses-permission android:name="android.permission.CAMERA" />
 
-    <!-- Tell Google Play: this app REQUIRES an AR-capable camera -->
+    <!-- Tell Google Play: this app REQUIRES a camera and an AR-capable camera -->
+    <uses-feature android:name="android.hardware.camera" android:required="true" />
     <uses-feature android:name="android.hardware.camera.ar" android:required="true" />
 
     <application

@@ -143,6 +143,8 @@ fun createTracingOverlayNode(
 
         // 6. Upload bitmap as Filament texture with mipmaps
         val texture = bitmapToFilamentTexture(engine, finalBitmap)
+        // Immediately recycle JVM intermediate bitmap after uploading to GPU
+        finalBitmap.recycle()
 
         // 7. Create material instance using trilinear filtering
         val sampler = TextureSampler(
@@ -174,8 +176,15 @@ fun createTracingOverlayNode(
             materialInstance = matInstance
         )
 
-        // 10. Attach MeshNode to the single table AnchorNode
-        val anchorNode = AnchorNode(engine = engine, anchor = surfaceAnchor)
+        // 10. Attach MeshNode to the custom TracingOverlayNode that frees Filament resources on destroy
+        val anchorNode = TracingOverlayNode(
+            engine = engine,
+            anchor = surfaceAnchor,
+            texture = texture,
+            vertexBuffer = vertexBuffer,
+            indexBuffer = indexBuffer,
+            materialInstance = matInstance
+        )
         anchorNode.addChildNode(meshNode)
 
         val centroid = PaperFrame.calculateCentroid(sorted)
@@ -213,6 +222,36 @@ fun createTracingOverlayNode(
     } catch (e: Throwable) {
         Log.e("TraceAR", "createTracingOverlayNode failed: ${e.message}", e)
         null
+    }
+}
+
+/**
+ * TracingOverlayNode — AnchorNode subclass that explicitly destroys native Filament
+ * GPU resources (Texture, VertexBuffer, IndexBuffer, MaterialInstance) when removed.
+ */
+class TracingOverlayNode(
+    engine: Engine,
+    anchor: Anchor,
+    private val texture: Texture,
+    private val vertexBuffer: VertexBuffer,
+    private val indexBuffer: IndexBuffer,
+    private val materialInstance: com.google.android.filament.MaterialInstance
+) : AnchorNode(engine = engine, anchor = anchor) {
+
+    override fun destroy() {
+        super.destroy()
+        try {
+            engine.destroyTexture(texture)
+        } catch (ignored: Throwable) {}
+        try {
+            engine.destroyVertexBuffer(vertexBuffer)
+        } catch (ignored: Throwable) {}
+        try {
+            engine.destroyIndexBuffer(indexBuffer)
+        } catch (ignored: Throwable) {}
+        try {
+            engine.destroyMaterialInstance(materialInstance)
+        } catch (ignored: Throwable) {}
     }
 }
 
