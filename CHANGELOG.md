@@ -37,6 +37,13 @@ All notable changes and inventory of features for the AR Tracer app.
   - **Stages Mode:** Classical portrait drawing stepper displaying one layer at a time in sequence (Outline first $\to$ Highlights $\to$ Midtones $\to$ Deep Shadows) with step badge chip and Prev/Next buttons.
   - **Value Picker & Eyedropper:** Pixel-accurate interactive tap preview inside the dock sheet plus "Pick on Paper" AR overlay tap mode, reporting brightness %, tone number, hex color swatch, and tonal name.
   - **Two-Tier High Performance Pipeline:** OpenCV segmentation runs asynchronously in background with a 150 ms slider debounce and LRU memory caching; real-time compositing operates purely in-memory ($< 15\text{ ms}$), maintaining smooth 60 FPS camera frame rates with zero ARCore stutter.
-  - **Exact Filament Quad Alignment:** Renders seamlessly through the existing Filament texture node pipeline, automatically inheriting fit modes, zoom, pan, rotation, crops, and drawing guides.
-  - **Persistence & Testing:** Serializes into `ProjectData` (`NormalizedTones`); validated with 7 comprehensive unit tests in `TonalProcessorTest.kt`.
+- **Photo Export & Timelapse Video Recording:**
+  - **Photo Capture (PixelCopy):** Hardware-accelerated GPU surface capture saving photos directly to device gallery via modern MediaStore (`Pictures/TraceAR`, zero legacy permissions required). Offers both "With Overlay" (complete AR tracing composite) and "Drawing Only" (clean real drawing without overlay).
+  - **Rectified Paper Scan:** Perspective warping via OpenCV (`Imgproc.getPerspectiveTransform` and `warpPerspective`) that projects the 4 tracked paper corners into a flat, top-down rectangular scan matching paper aspect ratios.
+  - **Direct System Sharing:** Native Android share sheet (`Intent.ACTION_SEND`) via `FileProvider` with content URIs for instant sharing of photos and videos.
+  - **Timelapse Session Recording:** Background timer capturing downscaled 720p frames at adjustable intervals (1 to 30s, default 5s). Enforces a 600-frame cap and 150 MB storage ceiling with a 100 MB free space guard.
+  - **Hardware-Accelerated MP4 Video Export:** Native `MediaCodec` (H.264 / `video/avc`) + `MediaMuxer` pipeline rendering frames through an EGL input surface at adjustable playback speeds (10 to 30 fps, default 24 fps) with real-time encoding progress, cancel support, and automatic temporary file cleanup.
+  - **On-Screen Recording Indicator & Lifecycle:** Sleek blinking on-screen recording chip (`🔴 REC 00:35 • 7f`) that opens controls on tap, and automatically pauses on app minimize (`ON_PAUSE` / `ON_STOP`) and resumes on `ON_RESUME`.
+  - **Unit Testing:** Comprehensive test suite in `ExportModelTest.kt` verifying frame naming, duration math, file formatting, even dimension constraints, and storage caps.
+
 

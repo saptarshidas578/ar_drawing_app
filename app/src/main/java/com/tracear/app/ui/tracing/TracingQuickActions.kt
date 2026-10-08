@@ -35,6 +35,7 @@ fun TracingQuickActions(
     onToggleLock: () -> Unit,
     onPeekStart: () -> Unit,
     onPeekEnd: () -> Unit,
+    onOpenExport: () -> Unit = {},
     isLeftHanded: Boolean,
     modifier: Modifier = Modifier
 ) {
@@ -43,6 +44,25 @@ fun TracingQuickActions(
         horizontalAlignment = if (isLeftHanded) Alignment.Start else Alignment.End,
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        // --- Capture & Timelapse Button ---
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clip(CircleShape)
+                .background(Color(0xDD161B22))
+                .border(1.dp, Color(0xFF00E5FF).copy(alpha = 0.6f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            IconButton(
+                onClick = onOpenExport,
+                modifier = Modifier.size(48.dp)
+            ) {
+                Text(
+                    text = "📸",
+                    fontSize = 18.sp
+                )
+            }
+        }
         // --- Lock / Unlock Button ---
         Box(
             modifier = Modifier

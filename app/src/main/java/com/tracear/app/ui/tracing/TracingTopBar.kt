@@ -65,6 +65,7 @@ fun TracingTopBar(
     onRealignPaper: (() -> Unit)? = null,
     onOpenSettings: (() -> Unit)? = null,
     onOpenTutorial: (() -> Unit)? = null,
+    onOpenExport: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
@@ -235,6 +236,15 @@ fun TracingTopBar(
                             onClick = {
                                 menuExpanded = false
                                 onRealignPaper()
+                            }
+                        )
+                    }
+                    if (onOpenExport != null) {
+                        DropdownMenuItem(
+                            text = { Text("📸  Capture & Timelapse", color = Color(0xFF58A6FF), fontSize = 13.sp, fontWeight = FontWeight.SemiBold) },
+                            onClick = {
+                                menuExpanded = false
+                                onOpenExport()
                             }
                         )
                     }

@@ -139,6 +139,15 @@ import com.tracear.app.ui.tracing.TracingDock
 import com.tracear.app.ui.tracing.TracingQuickActions
 import com.tracear.app.ui.tracing.TracingTopBar
 import com.tracear.app.ui.tracing.TracingUiState
+import com.tracear.app.export.CaptureResult
+import com.tracear.app.export.CaptureType
+import com.tracear.app.export.ExportManager
+import com.tracear.app.export.ExportMath
+import com.tracear.app.export.TimelapseEncoder
+import com.tracear.app.export.TimelapseState
+import com.tracear.app.export.TimelapseStatus
+import com.tracear.app.ui.tracing.ExportDialog
+import com.tracear.app.ui.tracing.TimelapseRecordingChip
 import dev.romainguy.kotlin.math.Float3
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.node.AnchorNode
@@ -313,6 +322,76 @@ fun ARScreen(
     val isProcessingTrackerCycle = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
     val powerManager = remember { context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager }
     var lastPaperDetectionTime by remember { mutableLongStateOf(0L) }
+    var sceneViewRef by remember { mutableStateOf<ARSceneView?>(null) }
+
+    // --- Export, Photo Capture & Timelapse State ---
+    var isExportDialogOpen by remember { mutableStateOf(false) }
+    val timelapseState = remember { TimelapseState() }
+    var lastCaptureResult by remember { mutableStateOf<CaptureResult?>(null) }
+    var isCapturingPhoto by remember { mutableStateOf(false) }
+    val timelapseCancelFlag = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
+    var isLowStorage by remember { mutableStateOf(false) }
+
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE,
+                androidx.lifecycle.Lifecycle.Event.ON_STOP -> {
+                    if (timelapseState.isRecording && !timelapseState.isPaused) {
+                        timelapseState.pauseRecording("App minimized")
+                    }
+                }
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
+                    if (timelapseState.isRecording && timelapseState.isPaused && timelapseState.userMessage == "App minimized") {
+                        timelapseState.resumeRecording()
+                    }
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    LaunchedEffect(timelapseState.isRecording, timelapseState.isPaused, timelapseState.intervalSeconds) {
+        if (timelapseState.isRecording && !timelapseState.isPaused) {
+            while (timelapseState.isRecording && !timelapseState.isPaused) {
+                val sv = sceneViewRef
+                if (sv != null && sv.width > 0 && sv.height > 0) {
+                    val available = ExportManager.getAvailableStorageBytes(context)
+                    if (ExportMath.isStorageLow(available)) {
+                        isLowStorage = true
+                        timelapseState.pauseRecording("Low storage space (<100MB)")
+                        break
+                    }
+
+                    val frameCount = timelapseState.recordedFrameCount
+                    val currentBytes = timelapseState.recordedBytes
+                    if (!ExportMath.canRecordNextFrame(frameCount, currentBytes)) {
+                        timelapseState.stopRecording()
+                        Toast.makeText(context, "Timelapse storage limit reached (600 frames)", Toast.LENGTH_LONG).show()
+                        break
+                    }
+
+                    val targetW = 720
+                    val targetH = (720f * (sv.height.toFloat() / sv.width.toFloat())).toInt()
+                    val frameBmp = ExportManager.captureSurface(sv, targetW, targetH)
+                    if (frameBmp != null) {
+                        val savedFile = ExportManager.saveTimelapseFrame(context, frameBmp, frameCount)
+                        if (savedFile != null) {
+                            timelapseState.recordedFrameCount++
+                            timelapseState.recordedBytes += savedFile.length()
+                        }
+                        frameBmp.recycle()
+                    }
+                }
+                delay(timelapseState.intervalSeconds * 1000L)
+            }
+        }
+    }
 
     // --- Overlay Smoothing (Off / Low / High) ---
     var smoothingMode by remember {
@@ -595,6 +674,147 @@ fun ARScreen(
         }
     }
 
+    // ── Export: Photo Capture Handler ────────────────────────
+    fun performPhotoCapture(type: CaptureType) {
+        val sv = sceneViewRef ?: return
+        isCapturingPhoto = true
+        scope.launch {
+            try {
+                when (type) {
+                    CaptureType.WITH_OVERLAY -> {
+                        val bmp = ExportManager.captureSurface(sv)
+                        if (bmp != null) {
+                            val filename = ExportMath.formatPhotoFilename(type)
+                            val uri = ExportManager.savePhotoToGallery(context, bmp, filename)
+                            lastCaptureResult = CaptureResult(uri, null, type, message = "Saved with AR overlay ($filename)")
+                            Toast.makeText(context, "Photo saved to Gallery ✓", Toast.LENGTH_SHORT).show()
+                            bmp.recycle()
+                        } else {
+                            Toast.makeText(context, "Unable to capture photo", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    CaptureType.WITHOUT_OVERLAY -> {
+                        tracingUi.isPeeking = true
+                        delay(50)
+                        val bmp = ExportManager.captureSurface(sv)
+                        tracingUi.isPeeking = false
+                        if (bmp != null) {
+                            val filename = ExportMath.formatPhotoFilename(type)
+                            val uri = ExportManager.savePhotoToGallery(context, bmp, filename)
+                            lastCaptureResult = CaptureResult(uri, null, type, message = "Saved drawing only ($filename)")
+                            Toast.makeText(context, "Drawing photo saved to Gallery ✓", Toast.LENGTH_SHORT).show()
+                            bmp.recycle()
+                        } else {
+                            Toast.makeText(context, "Unable to capture drawing", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    CaptureType.RECTIFIED_PAPER -> {
+                        if (!calibration.isCalibrated || calibration.localCorners.size != 4) {
+                            Toast.makeText(context, "Calibrate paper corners first to generate rectified scan", Toast.LENGTH_SHORT).show()
+                            isCapturingPhoto = false
+                            return@launch
+                        }
+                        tracingUi.isPeeking = true
+                        delay(50)
+                        val rawBmp = ExportManager.captureSurface(sv)
+                        tracingUi.isPeeking = false
+
+                        if (rawBmp != null) {
+                            val anchor = calibration.surfaceAnchor
+                            if (anchor != null) {
+                                val sorted = MathUtils.sortCornersClockwise(effectiveCorners)
+                                val worldCorners = sorted.map { localToWorld(anchor.pose, it) }
+                                val s0 = sv.cameraNode.worldToScreenPoint(Vector3(worldCorners[0].x, worldCorners[0].y, worldCorners[0].z))
+                                val s1 = sv.cameraNode.worldToScreenPoint(Vector3(worldCorners[1].x, worldCorners[1].y, worldCorners[1].z))
+                                val s2 = sv.cameraNode.worldToScreenPoint(Vector3(worldCorners[2].x, worldCorners[2].y, worldCorners[2].z))
+                                val s3 = sv.cameraNode.worldToScreenPoint(Vector3(worldCorners[3].x, worldCorners[3].y, worldCorners[3].z))
+
+                                val scaleX = rawBmp.width.toFloat() / sv.width.toFloat()
+                                val scaleY = rawBmp.height.toFloat() / sv.height.toFloat()
+                                val screenPts = listOf(
+                                    Offset(s0.x * scaleX, s0.y * scaleY),
+                                    Offset(s1.x * scaleX, s1.y * scaleY),
+                                    Offset(s2.x * scaleX, s2.y * scaleY),
+                                    Offset(s3.x * scaleX, s3.y * scaleY)
+                                )
+                                val aspect = if (paperHeightMeters > 0) paperWidthMeters / paperHeightMeters else 0.707f
+                                val rectifiedBmp = ExportManager.rectifyPaper(rawBmp, screenPts, aspect)
+
+                                if (rectifiedBmp != null) {
+                                    val filename = ExportMath.formatPhotoFilename(type)
+                                    val uri = ExportManager.savePhotoToGallery(context, rectifiedBmp, filename)
+                                    lastCaptureResult = CaptureResult(uri, null, type, message = "Saved top-down scan ($filename)")
+                                    Toast.makeText(context, "Paper scan saved to Gallery ✓", Toast.LENGTH_SHORT).show()
+                                    rectifiedBmp.recycle()
+                                } else {
+                                    Toast.makeText(context, "Failed to rectify paper scan", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            rawBmp.recycle()
+                        }
+                    }
+                }
+            } catch (e: Throwable) {
+                Log.e("TraceAR", "Capture failed: ${e.message}", e)
+                Toast.makeText(context, "Capture error: ${e.message}", Toast.LENGTH_SHORT).show()
+            } finally {
+                isCapturingPhoto = false
+            }
+        }
+    }
+
+    // ── Export: Timelapse Video Encoding Handler ─────────────
+    fun performTimelapseExport() {
+        timelapseCancelFlag.set(false)
+        timelapseState.status = TimelapseStatus.EXPORTING
+        timelapseState.exportProgress = 0f
+
+        scope.launch {
+            val frames = ExportManager.getTimelapseFrameFiles(context)
+            if (frames.isEmpty()) {
+                timelapseState.status = TimelapseStatus.ERROR
+                Toast.makeText(context, "No recorded frames to export", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+
+            val outputMp4 = File(context.cacheDir, "timelapse_${System.currentTimeMillis()}.mp4")
+            val sv = sceneViewRef
+            val (w, h) = if (sv != null && sv.width > 0 && sv.height > 0) {
+                ExportMath.ensureEvenDimensions(720, (720f * (sv.height.toFloat() / sv.width.toFloat())).toInt())
+            } else {
+                Pair(720, 1280)
+            }
+
+            val success = TimelapseEncoder.encodeFrames(
+                frameFiles = frames,
+                outputFile = outputMp4,
+                width = w,
+                height = h,
+                fps = timelapseState.playbackFps,
+                cancelFlag = timelapseCancelFlag,
+                onProgress = { p -> timelapseState.exportProgress = p }
+            )
+
+            if (success && outputMp4.exists()) {
+                val filename = ExportMath.formatVideoFilename()
+                val galleryUri = ExportManager.saveVideoToGallery(context, outputMp4, filename)
+                timelapseState.lastExportedFile = outputMp4
+                timelapseState.lastExportedUri = galleryUri
+                timelapseState.status = TimelapseStatus.COMPLETED
+                Toast.makeText(context, "Timelapse saved to Gallery ✓", Toast.LENGTH_LONG).show()
+
+                ExportManager.cleanupTimelapseFrames(context)
+                timelapseState.recordedBytes = 0L
+            } else if (timelapseCancelFlag.get()) {
+                timelapseState.status = TimelapseStatus.IDLE
+                Toast.makeText(context, "Timelapse export cancelled", Toast.LENGTH_SHORT).show()
+            } else {
+                timelapseState.status = TimelapseStatus.ERROR
+                Toast.makeText(context, "Failed to encode timelapse video", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     // Lifecycle handling: Keep screen awake, reset brightness, turn off torch, autosave on exit
     DisposableEffect(Unit) {
         activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -657,7 +877,6 @@ fun ARScreen(
 
     // Store references
     val latestFrameRef = remember { java.util.concurrent.atomic.AtomicReference<Frame?>(null) }
-    var sceneViewRef by remember { mutableStateOf<ARSceneView?>(null) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
     var detectedPaper by remember { mutableStateOf<DetectedPaper?>(null) }
 
@@ -1735,8 +1954,20 @@ fun ARScreen(
                 onRealignPaper = { realignPaper() },
                 onOpenSettings = onOpenSettings,
                 onOpenTutorial = onOpenTutorial,
+                onOpenExport = { isExportDialogOpen = true },
                 modifier = Modifier.align(Alignment.TopCenter)
             )
+
+            // On-screen recording indicator chip
+            if (timelapseState.isRecording) {
+                TimelapseRecordingChip(
+                    timelapseState = timelapseState,
+                    onClick = { isExportDialogOpen = true },
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 56.dp)
+                )
+            }
         }
 
         // ===== Paper Lock Non-Blocking Banners =====
@@ -1842,6 +2073,7 @@ fun ARScreen(
                     },
                     onPeekStart = { tracingUi.isPeeking = true },
                     onPeekEnd = { tracingUi.isPeeking = false },
+                    onOpenExport = { isExportDialogOpen = true },
                     isLeftHanded = tracingUi.isLeftHanded,
                     modifier = Modifier
                         .align(
@@ -2046,6 +2278,48 @@ fun ARScreen(
             onDismiss = { isCropDialogOpen = false }
         )
     }
+
+    // --- Export, Photo Capture & Timelapse Dialog ---
+    ExportDialog(
+        isOpen = isExportDialogOpen,
+        onDismiss = { isExportDialogOpen = false },
+        timelapseState = timelapseState,
+        lastCaptureResult = lastCaptureResult,
+        isCapturingPhoto = isCapturingPhoto,
+        onCapturePhoto = { type -> performPhotoCapture(type) },
+        onShareLastPhoto = {
+            val r = lastCaptureResult
+            if (r?.uri != null) {
+                ExportManager.shareUri(context, r.uri, "image/jpeg", "Share Tracing Photo")
+            }
+        },
+        onToggleTimelapseRecording = {
+            if (timelapseState.isRecording) {
+                timelapseState.stopRecording()
+            } else {
+                timelapseState.startRecording()
+            }
+        },
+        onExportTimelapseVideo = { performTimelapseExport() },
+        onCancelTimelapseExport = { timelapseCancelFlag.set(true) },
+        onShareTimelapseVideo = {
+            val f = timelapseState.lastExportedFile
+            val u = timelapseState.lastExportedUri
+            if (f != null && f.exists()) {
+                ExportManager.shareFile(context, f, "video/mp4", "Share Timelapse Video")
+            } else if (u != null) {
+                ExportManager.shareUri(context, u, "video/mp4", "Share Timelapse Video")
+            }
+        },
+        onDiscardTimelapseFrames = {
+            scope.launch {
+                ExportManager.cleanupTimelapseFrames(context)
+                timelapseState.reset()
+                Toast.makeText(context, "Timelapse frames discarded", Toast.LENGTH_SHORT).show()
+            }
+        },
+        isLowStorage = isLowStorage
+    )
 
     // --- Re-calibration Confirmation Dialog ---
     if (showRecalibDialog) {
