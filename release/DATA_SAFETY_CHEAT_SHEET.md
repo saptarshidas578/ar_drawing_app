@@ -69,7 +69,7 @@ If Google Play prompts you through specific categories, answer **"Not collected"
 ---
 
 ## 4. Privacy Policy URL
-- In the Play Console **App Content > Privacy Policy** field, enter a public URL where you host [PRIVACY_POLICY.md](file:///c:/Users/lenovo/ar_drawing_app/release/PRIVACY_POLICY.md).
+- In the Play Console **App Content > Privacy Policy** field, enter a public URL where you host [PRIVACY_POLICY.md](PRIVACY_POLICY.md).
 - *Easy options for hosting*:
   1. A GitHub Pages site or raw GitHub markdown URL in your repository.
   2. A Notion public page.

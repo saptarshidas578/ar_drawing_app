@@ -48,13 +48,17 @@ sealed class RayPlaneResult {
 object MathUtils {
 
     /**
-     * Computes the intersection of a 3D ray with an infinite mathematical plane.
+     * Computes the analytical intersection of a 3D ray with an infinite mathematical plane.
      *
-     * @param ray The camera ray (origin and direction).
-     * @param planePoint A known point lying on the plane.
+     * @param ray The optical camera ray in [World Space (meters)] or [Anchor-Local Space (meters)].
+     * @param planePoint A known reference point lying on the target plane in the same coordinate space.
      * @param planeNormal The unit normal vector perpendicular to the plane surface.
-     * @param maxDistance Maximum plausible distance in meters (e.g. 2.0m).
-     * @return [RayPlaneResult.Hit] with exact 3D coordinates, or edge cases.
+     * @param maxDistance Maximum plausible ray length in meters (default 2.0m) to reject extreme background intersections.
+     * @return [RayPlaneResult.Hit] with exact 3D coordinates and distance `t`, or failure edge cases:
+     *         [RayPlaneResult.Parallel] if ray is parallel to plane (|denom| < 1e-4),
+     *         [RayPlaneResult.BehindCamera] if intersection is behind camera (t < 0),
+     *         or [RayPlaneResult.TooFar] if distance exceeds [maxDistance].
+     * @gotcha Ensure [planeNormal] and [ray.direction] are normalized vectors.
      */
     fun rayPlaneIntersection(
         ray: Ray,
@@ -90,7 +94,10 @@ object MathUtils {
     }
 
     /**
-     * Extracts the world-space upward normal (+Y in ARCore local space) from a plane's rotation quaternion.
+     * Extracts the world-space upward normal (+Y in ARCore local plane coordinates)
+     * from a plane's rotation quaternion [qx, qy, qz, qw].
+     *
+     * @return Normalized 3D normal vector in [World Space (meters)].
      */
     fun extractPlaneNormal(qx: Float, qy: Float, qz: Float, qw: Float): Vector3f {
         // Rotating local (0, 1, 0) by quaternion [qx, qy, qz, qw]:
@@ -101,8 +108,12 @@ object MathUtils {
     }
 
     /**
-     * Checks if a plane normal is roughly vertical (pointing up towards +Y).
-     * Rejects slanted surfaces or vertical walls.
+     * Checks if a detected plane normal vector is roughly vertical (pointing upward towards +Y).
+     * Used for floor and wall rejection during surface calibration.
+     *
+     * @param normal Candidate surface normal vector in [World Space].
+     * @param maxAngleDegrees Maximum permitted tilt angle in degrees away from pure vertical (default 25°).
+     * @return True if the surface is a horizontal tabletop; false if slanted or vertical wall.
      */
     fun isRoughlyVertical(normal: Vector3f, maxAngleDegrees: Float = 25f): Boolean {
         val n = normal.normalized()
@@ -112,8 +123,12 @@ object MathUtils {
     }
 
     /**
-     * Sorts 4 points clockwise: Top-Left, Top-Right, Bottom-Right, Bottom-Left
-     * based on their horizontal angle relative to their centroid.
+     * Sorts 4 planar points clockwise around their geometric centroid:
+     * Order: Top-Left, Top-Right, Bottom-Right, Bottom-Left.
+     *
+     * @param pts List of 4 points in [Anchor-Local Space (meters)] or [World Space (meters)].
+     * @return Clockwise sorted list of 4 points, or original list if size is not 4.
+     * @gotcha Points must lie roughly in a single plane (e.g. tabletop X-Z plane).
      */
     fun sortCornersClockwise(pts: List<Vector3f>): List<Vector3f> {
         if (pts.size != 4) return pts
@@ -128,8 +143,15 @@ object MathUtils {
     }
 
     /**
-     * Unprojects a 2D screen coordinate into a 3D ray in world space
-     * using the 4x4 inverted (View-Projection) matrix.
+     * Unprojects a 2D screen touch coordinate into a 3D ray in [World Space (meters)]
+     * using the camera's inverted View-Projection matrix.
+     *
+     * @param touchX Screen touch coordinate X in pixels [0..viewportWidth].
+     * @param touchY Screen touch coordinate Y in pixels [0..viewportHeight].
+     * @param viewportWidth Surface viewport width in pixels.
+     * @param viewportHeight Surface viewport height in pixels.
+     * @param invViewProjMatrix 16-element column-major inverted (View * Projection) matrix.
+     * @return [Ray] with near-plane origin and unit direction vector in [World Space (meters)].
      */
     fun unprojectScreenPointToRay(
         touchX: Float,

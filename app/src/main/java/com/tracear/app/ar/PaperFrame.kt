@@ -5,12 +5,15 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * PaperFrame — 2D rigid pose of the paper on the locked table plane.
+ * PaperFrame — Immutable 2D rigid pose representing physical paper movement on the locked table plane.
  *
- * Coordinates are in anchor-local space (horizontal X-Z plane, +Y normal):
- * - dx: translation along X axis in meters
- * - dz: translation along Z axis in meters
- * - rotationDegrees: rotation angle in degrees around the Y axis (+Y up)
+ * All coordinates are defined in [Anchor-Local Space (meters)] on the horizontal tabletop (X-Z plane, +Y normal):
+ * - [dx]: Translation along table X axis in meters.
+ * - [dz]: Translation along table Z axis in meters.
+ * - [rotationDegrees]: In-plane planar yaw rotation angle in degrees around the +Y vertical axis.
+ *
+ * Invariant: Changing the PaperFrame dynamically shifts the SceneView Filament render node
+ * without modifying persistent project data, paper-normalized coordinates, or the undo stack.
  */
 data class PaperFrame(
     val dx: Float = 0f,
@@ -18,7 +21,11 @@ data class PaperFrame(
     val rotationDegrees: Float = 0f
 ) {
     /**
-     * Transforms a 3D point on the table plane around the paper centroid.
+     * Transforms a 3D point on the table plane around the paper baseline centroid.
+     *
+     * @param point 3D point in [Anchor-Local Space (meters)].
+     * @param centroid Center of the 4 paper corners in [Anchor-Local Space (meters)].
+     * @return Transformed 3D point in [Anchor-Local Space (meters)] following paper translation and yaw.
      */
     fun transform(point: Vector3f, centroid: Vector3f): Vector3f {
         if (isIdentity()) return point

@@ -8,10 +8,15 @@ import androidx.compose.runtime.setValue
 import com.google.ar.core.Anchor
 
 /**
- * CalibrationState — manages the single surface anchor and the 4 paper corner positions
- * expressed in that anchor's local coordinate space.
+ * CalibrationState — Manages the single physical table anchor and the 4 calibrated paper corner positions.
  *
- * All 4 corners reside on the locked table plane, preventing any plane mismatch or floor penetration.
+ * Coordinates are held in [Anchor-Local Space (meters)]:
+ * - [surfaceAnchor]: Physical ARCore [Anchor] attached to the detected table plane.
+ * - [localCorners]: 4 points in meters relative to [surfaceAnchor], ordered clockwise
+ *   (Top-Left, Top-Right, Bottom-Right, Bottom-Left).
+ *
+ * Invariant: All 4 corners lie strictly on the locked table plane ($y \approx 0$ in anchor space),
+ * completely preventing out-of-plane tilting or floating overlay bugs.
  */
 class CalibrationState {
 
@@ -30,7 +35,10 @@ class CalibrationState {
         private set
 
     /**
-     * Set the single surface anchor for calibration.
+     * Binds the single physical surface anchor for this tracing session.
+     * Detaches any previous anchor to prevent ARCore resource leaks.
+     *
+     * @param anchor ARCore [Anchor] placed on the detected table plane.
      */
     fun bindSurfaceAnchor(anchor: Anchor) {
         surfaceAnchor?.detach()
@@ -39,7 +47,9 @@ class CalibrationState {
     }
 
     /**
-     * Add a corner position in local coordinates of the surface anchor.
+     * Adds a corner position in [Anchor-Local Space (meters)].
+     *
+     * @param localPoint 3D point in meters relative to [surfaceAnchor].
      */
     fun addCorner(localPoint: Vector3f) {
         if (cornerCount >= 4) return

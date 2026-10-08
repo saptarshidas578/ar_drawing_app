@@ -7,7 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
 /**
- * 6 primary categories in the bottom tracing dock.
+ * Primary categories selectable in the compact bottom tracing dock.
  */
 enum class DockCategory(val label: String, val icon: String) {
     OPACITY("Opacity", "💧"),
@@ -21,8 +21,11 @@ enum class DockCategory(val label: String, val icon: String) {
 }
 
 /**
- * State holder for tracing screen UI interaction, comfort features,
- * and category sheet lifecycle.
+ * TracingUiState — State holder for tracing screen UI interaction, bottom dock sheets,
+ * and artist comfort features (Focus mode, Hold-to-Peek, Left-handed mode).
+ *
+ * Invariant: UI elements occupy at most 15% of the screen when sheets are closed, and bottom sheets
+ * never exceed 30% of screen height, ensuring the camera stream remains visually dominant at all times.
  */
 class TracingUiState(context: Context? = null) {
 

@@ -12,13 +12,16 @@ import java.io.FileOutputStream
 import java.util.UUID
 
 /**
- * ProjectRepository — manages persistent project storage in app internal files.
+ * ProjectRepository — Manages persistent project storage in the application's private internal sandbox.
  *
  * Folder structure:
- *   context.filesDir/projects/{projectId}/
- *     ├── project.json      (settings, fit mode, grid, lines, transform)
- *     ├── image.png         (reference image copied into app sandbox)
- *     └── thumb.png         (downscaled 300px thumbnail for fast list rendering)
+ *   `context.filesDir/projects/{projectId}/`
+ *     ├── `project.json`      (Versioned JSON holding paper-normalized coordinates, guides, transforms)
+ *     ├── `image.png`         (Local copy of reference image surviving gallery deletion)
+ *     └── `thumb.png`         (Downscaled 300px thumbnail for fast list rendering)
+ *
+ * Invariant: Stored project geometry strictly uses [Paper-Normalized Space (0..1)], ensuring drawings
+ * can be resumed on any desk, at any scale, without dependence on ephemeral ARCore session coordinates.
  */
 class ProjectRepository(private val context: Context) {
 
@@ -31,7 +34,9 @@ class ProjectRepository(private val context: Context) {
         get() = File(context.filesDir, PROJECTS_DIR).apply { if (!exists()) mkdirs() }
 
     /**
-     * Lists all saved projects, sorted newest to oldest.
+     * Lists all saved projects on [Dispatchers.IO], sorted newest to oldest by [ProjectData.lastModified].
+     *
+     * @return List of parsed [ProjectData] objects, skipping corrupted files safely without crashing.
      */
     suspend fun listProjects(): List<ProjectData> = withContext(Dispatchers.IO) {
         val list = mutableListOf<ProjectData>()
