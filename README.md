@@ -161,3 +161,11 @@ Special thanks to the open-source projects that make TraceAR possible:
 - [SceneView Android](https://github.com/SceneView/sceneview-android) & [Google Filament](https://github.com/google/filament) — Real-time 3D graphics rendering.
 - [OpenCV for Android](https://opencv.org/) — Computer vision, Canny edge detection, bilateral filtering, and perspective warping.
 - [Jetpack Compose](https://developer.android.com/jetpack/compose) — Modern declarative Android UI toolkit.
+
+---
+
+## Author & Contact
+
+- **Author:** [saptarshi2007 (saptarshidas578)](https://github.com/saptarshidas578)
+- **Institution:** B.Tech Electrical & Computer Science Engineering, VIT Vellore
+- **LinkedIn:** TODO(author): add link
