@@ -4,6 +4,7 @@ Copy each prompt (the text inside a block) into Antigravity, one at a time, in t
 Every prompt starts by invoking skills from `skills.md`.
 
 ## Rules for using these prompts
+
 1. Put `skills.md` in the project root and run **Prompt 0** first (one time).
 2. Run **one prompt at a time**. Let it finish and build, then test it on your phone with the checklist it gives you.
 3. Each prompt makes the agent commit a checkpoint first. If something breaks, ask Antigravity to revert to the last checkpoint.
@@ -12,19 +13,19 @@ Every prompt starts by invoking skills from `skills.md`.
 
 ## Order and dependencies
 
-| # | Prompt | Needs |
-|---|--------|-------|
-| 0 | Install skills (one time) | skills.md |
-| 8 | Polish: tutorial, messages, settings, icon, battery saver | Prompts 1 to 7 |
-| 9 | Proportion grid and construction lines | 7 (paper size) |
-| 10 | Tonal layers, stages, value picker | 3 (lines-only) |
-| 11 | Reference preview and accuracy check (beta) | 9, 10 |
-| 12 | Timelapse and photo export | 8 |
-| 13 | Printed marker fallback (optional) | 4 |
-| 14 | Hand occlusion (optional, experimental) | 4 |
-| 15 | Stability and hardening audit | all above |
-| 16 | Release build and Play Store preparation | 15 |
-| 17 | Languages: English, Tamil, Hindi (optional) | 8 |
+| #   | Prompt                                                    | Needs          |
+| --- | --------------------------------------------------------- | -------------- |
+| 0   | Install skills (one time)                                 | skills.md      |
+| 8   | Polish: tutorial, messages, settings, icon, battery saver | Prompts 1 to 7 |
+| 9   | Proportion grid and construction lines                    | 7 (paper size) |
+| 10  | Tonal layers, stages, value picker                        | 3 (lines-only) |
+| 11  | Reference preview and accuracy check (beta)               | 9, 10          |
+| 12  | Timelapse and photo export                                | 8              |
+| 13  | Printed marker fallback (optional)                        | 4              |
+| 14  | Hand occlusion (optional, experimental)                   | 4              |
+| 15  | Stability and hardening audit                             | all above      |
+| 16  | Release build and Play Store preparation                  | 15             |
+| 17  | Languages: English, Tamil, Hindi (optional)               | 8              |
 
 ---
 

@@ -15,17 +15,21 @@ name: ar-tracer-project-context
 description: Use at the start of EVERY task on the AR tracing app. Explains what the app is, its coordinate spaces, the rules that must never break, and the inventory of features already built.
 
 ## What the app is
+
 An Android app where the user picks a reference image, the phone camera looks at a sheet of paper on a table, and the image is drawn over the paper, anchored in the real world. The user watches the screen and traces with a pencil on the real paper. The overlay must stay locked to the paper as the phone moves closer, farther, tilts, or rotates.
 
 ## Stack
+
 Kotlin, Jetpack Compose, ARCore, SceneView, OpenCV for Android, local storage for projects and settings. Confirm the real versions and libraries by reading `build.gradle` files. Do not assume.
 
 ## Coordinate spaces (never mix them up)
+
 1. **World space:** ARCore's meters. Never saved to disk, because ARCore sessions do not persist between runs.
 2. **Anchor-local space:** positions relative to the single overlay anchor on the locked plane. Used while the session runs.
 3. **Paper-normalized space (u, v), each from 0 to 1:** position across the 4 marked paper corners, origin at the top-left corner. This is the ONLY space used for saving data to disk.
 
 ## Invariants (never change without the user's explicit permission)
+
 1. Calibration flow: find and lock the table plane, then mark 4 paper corners (tap or Detect paper).
 2. The table plane is the working plane. The paper itself is never detected as a plane.
 3. Corner taps become camera rays and are intersected mathematically with the locked plane's infinite plane (ray-plane intersection), not ARCore hit tests.
@@ -37,6 +41,7 @@ Kotlin, Jetpack Compose, ARCore, SceneView, OpenCV for Android, local storage fo
 9. Paper frame: A 2D rigid pose (translation dx, dz and rotation theta) on the locked plane relative to the single overlay anchor, initialized to identity at calibration. Everything attached to the paper (quad mesh, image, section grid and done marks, guides, ruler, corner handles, lines-only and tonal layers) renders relative to this frame using paper-normalized coordinates. Changing the paper frame never alters saved project data, the image transform, or the undo stack. When Paper lock is turned off, the paper frame remains identity.
 
 ## Features already built (do not break any of these)
+
 - Foundation: gallery image picker, camera permission, ARCore support check, 4-corner calibration with markers and undo, quad overlay, opacity slider, change image, keep screen awake, portrait and landscape.
 - Placement: corner auto-sorting, draggable corner handles, fit modes, rotate/scale/move by gesture, rotation slider, 90 degree buttons, flips, reset image, lock/unlock, full re-calibration reset, debug outline.
 - Zoom and sections: view zoom 1x to 4x with pan and reset, section grid 2x2 to 6x6, active-section highlight with dimming, focus section, next/previous in snake order, mark done with progress, confirmation before re-calibrating, high-resolution image loading and tiling.
@@ -49,6 +54,7 @@ Kotlin, Jetpack Compose, ARCore, SceneView, OpenCV for Android, local storage fo
 Maintain a `CHANGELOG.md` in the project root. At the end of every task, append what changed and which features now exist. Do not edit this skill file to record progress.
 
 ## About the user
+
 The user is a beginner. Explain in plain English, define any jargon the first time, give exact steps for anything they must do by hand, and say clearly what they should test on their phone.
 
 ---
@@ -188,6 +194,7 @@ name: review-and-report
 description: Use at the end of every task. Self-review checklist and the required final report format.
 
 ## Self-review (do this before reporting)
+
 - Does it build with no errors? Any new warnings that matter?
 - Are all existing features still reachable and working?
 - Null cases, lifecycle (pause/resume, rotation), permission denial, low memory, tracking lost?
@@ -197,6 +204,7 @@ description: Use at the end of every task. Self-review checklist and the require
 - Is the code commented in plain English where it matters?
 
 ## Final report format
+
 1. **Summary:** what was done, in plain English.
 2. **Changed files:** the list, with one line each.
 3. **How to undo:** the git branch or command.

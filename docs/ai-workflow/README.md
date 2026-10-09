@@ -7,6 +7,7 @@ This folder documents how **TraceAR** (`ar_drawing_app`) was designed, implement
 ## Overview
 
 The entire application was built iteratively by combining:
+
 1. **Domain-Specific Architectural Skills**: 12 modular instruction sets stored in `.agent/skills/` that enforce strict invariants (e.g., coordinate spaces, OpenCV memory safety, Jetpack Compose UI patterns, battery management, and test-first math logic).
 2. **Sequential Implementation Prompts**: A series of milestone prompts (archived in [`prompts.md`](prompts.md)) guiding the agent through feature increments:
    - **Foundation & Core Calibration**: 4-corner paper quad mapping on an ARCore detected table plane.
@@ -24,4 +25,4 @@ The entire application was built iteratively by combining:
 - [`prompts.md`](prompts.md): The prompt sequence executed during development.
 - `.agent/skills/` (in root): The active skills loaded by the Antigravity agent during pair programming.
 
-*(Note: This folder is maintained for engineering documentation and can be archived or deleted if desired without affecting the Android application runtime.)*
+_(Note: This folder is maintained for engineering documentation and can be archived or deleted if desired without affecting the Android application runtime.)_

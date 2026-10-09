@@ -63,6 +63,7 @@ flowchart TD
 The application consists of a single `:app` module structured into focused packages:
 
 ### `com.tracear.app.ar` — Augmented Reality, Geometry & Computer Vision
+
 - [`CalibrationState.kt`](../app/src/main/java/com/tracear/app/ar/CalibrationState.kt): State machine for 4-corner tap calibration and marker manipulation.
 - [`SurfaceState.kt`](../app/src/main/java/com/tracear/app/ar/SurfaceState.kt): Table plane detection, reticle state, quality estimation, and surface locking.
 - [`MathUtils.kt`](../app/src/main/java/com/tracear/app/ar/MathUtils.kt): Pure math algorithms: ray-plane intersection, quad sorting, homography, unit conversions.
@@ -85,16 +86,19 @@ The application consists of a single `:app` module structured into focused packa
 - [`LinesOnlyState.kt`](../app/src/main/java/com/tracear/app/ar/LinesOnlyState.kt): UI state for Canny line sensitivity, thickness, and palette colors.
 
 ### `com.tracear.app.data` — Persistence & Settings
+
 - [`ProjectModel.kt`](../app/src/main/java/com/tracear/app/data/ProjectModel.kt): Serializable schema holding paper-normalized corners, image transforms, guides, and metadata.
 - [`ProjectRepository.kt`](../app/src/main/java/com/tracear/app/data/ProjectRepository.kt): JSON filesystem persistence in app sandbox (`Context.filesDir`).
 - [`AppSettings.kt`](../app/src/main/java/com/tracear/app/data/AppSettings.kt): Centralized persistent preferences via `SharedPreferences`.
 
 ### `com.tracear.app.export` — Media Export & Video Encoding
+
 - [`ExportManager.kt`](../app/src/main/java/com/tracear/app/export/ExportManager.kt): PixelCopy GPU surface capture, perspective rectification, and MediaStore gallery writing.
 - [`TimelapseEncoder.kt`](../app/src/main/java/com/tracear/app/export/TimelapseEncoder.kt): Hardware-accelerated H.264 `MediaCodec` + `MediaMuxer` video encoding pipeline.
 - [`ExportModel.kt`](../app/src/main/java/com/tracear/app/export/ExportModel.kt): Configuration, file formatting, and duration math for exports.
 
 ### `com.tracear.app.ui` — Jetpack Compose UI
+
 - [`MainActivity.kt`](../app/src/main/java/com/tracear/app/MainActivity.kt): Single activity host, edge-to-edge window setup, screen awake lock.
 - [`TraceARApp.kt`](../app/src/main/java/com/tracear/app/ui/TraceARApp.kt): Top-level navigation composable routing between Home, Tracing, and Settings.
 - [`HomeScreen.kt`](../app/src/main/java/com/tracear/app/ui/HomeScreen.kt): Project list gallery, recent drawings, and new project launcher.
@@ -172,7 +176,9 @@ If the paper slides or rotates on the desk during tracing, **Paper Lock** tracks
 ## 6. Persistence & Threading Model
 
 ### Persistence Schema (Versioned JSON)
+
 Projects are serialized to `project.json` inside private storage (`Context.filesDir/projects/<id>/`):
+
 - `schemaVersion`: Integer (`1`).
 - `corners`: 4 normalized points.
 - `transform`: Scale, translation, rotation, flips.
@@ -180,6 +186,7 @@ Projects are serialized to `project.json` inside private storage (`Context.files
 - `imageUri`: Sandboxed copy of the reference image.
 
 ### Threading Architecture
+
 - **Main Thread (UI)**: Jetpack Compose rendering, user gesture recognition, sheet animations.
 - **Render Thread (GPU / Filament)**: SceneView frame loop, camera background blit, 3D textured quad rendering.
 - **Background Dispatcher (`Dispatchers.Default`)**:

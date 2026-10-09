@@ -15,7 +15,7 @@ This document outlines environment requirements, build commands, test execution,
   - Android NDK (if building native C++ components, though prebuilt OpenCV AAR is integrated)
 - **Physical Test Device**:
   - ARCore requires a physical Android device certified for Google Play Services for AR ([Supported Devices List](https://developers.google.com/ar/devices)).
-  - *Note*: Android Studio Virtual Devices (Emulators) cannot simulate ARCore camera depth and feature point tracking accurately. Always test on physical hardware.
+  - _Note_: Android Studio Virtual Devices (Emulators) cannot simulate ARCore camera depth and feature point tracking accurately. Always test on physical hardware.
 
 ---
 
@@ -24,32 +24,41 @@ This document outlines environment requirements, build commands, test execution,
 All commands can be executed using the Gradle wrapper in the project root:
 
 ### Build Debug APK
+
 ```bash
 ./gradlew assembleDebug
 ```
+
 Output: `app/build/outputs/apk/debug/app-debug.apk`
 
 ### Install Debug APK Directly to Connected Phone
+
 ```bash
 ./gradlew installDebug
 ```
 
 ### Run Unit Tests
+
 ```bash
 ./gradlew testDebugUnitTest
 ```
+
 To run a specific test suite (e.g. math tests):
+
 ```bash
 ./gradlew testDebugUnitTest --tests "com.tracear.app.ar.MathUtilsTest"
 ```
 
 ### Run Android Lint
+
 ```bash
 ./gradlew lintDebug
 ```
+
 Lint reports are generated at `app/build/reports/lint-results-debug.html`.
 
 ### Build Release APK & Bundle (Local Verification)
+
 ```bash
 ./gradlew assembleRelease
 ./gradlew bundleRelease
@@ -102,6 +111,7 @@ When adding features, adhere to the established project safety workflow:
 ## 5. Working with AI Prompts & Skills (`docs/ai-workflow`)
 
 This repository includes custom agent skills located in `.agent/skills/` and documentation in `docs/ai-workflow/`:
+
 - **`ar-tracer-project-context`**: Invariant rules and coordinate space definitions.
 - **`plan-first-workflow`**: Instructions for planning before coding.
 - **`image-processing-rules`**: Memory rules for OpenCV and Bitmaps.
