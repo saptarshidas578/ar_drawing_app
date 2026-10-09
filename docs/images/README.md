@@ -8,7 +8,7 @@ This directory contains real application screenshots and graphic assets illustra
 
 1. **`01_surface_detection.png`**
    - **Feature**: AR Surface Detection & Plane Calibration.
-   - **Description**: The phone camera detects the flat table/desk surface using Google ARCore, displays a green reticle crosshair, and prompts: *"Table surface found! Tap 'Use this surface' below"*.
+   - **Description**: The phone camera detects the flat table/desk surface using Google ARCore, displays a green reticle crosshair, and prompts: _"Table surface found! Tap 'Use this surface' below"_.
 
 2. **`02_tracing_transform.png`**
    - **Feature**: Optical Tracing & Transform Bottom Sheet.

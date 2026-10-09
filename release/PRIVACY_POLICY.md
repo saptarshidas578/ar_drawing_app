@@ -7,6 +7,7 @@ TraceAR ("we", "our", or "the app") is committed to respecting and protecting yo
 ---
 
 ## 1. Summary: 100% On-Device & Offline
+
 - **We do not collect, store, transmit, or sell any personal information.**
 - **TraceAR does not connect to the internet.** The app has no network access permissions (`android.permission.INTERNET` is not included in the application).
 - All image processing, camera tracking, and augmented reality computations happen exclusively on your device.
@@ -14,6 +15,7 @@ TraceAR ("we", "our", or "the app") is committed to respecting and protecting yo
 ---
 
 ## 2. Camera Usage
+
 - **Camera Permission (`android.permission.CAMERA`)**:
   - TraceAR requires camera access solely to project your reference image onto your physical paper via Augmented Reality (ARCore).
   - The live camera feed is processed in real-time in your device's memory for paper edge detection and spatial positioning.
@@ -22,6 +24,7 @@ TraceAR ("we", "our", or "the app") is committed to respecting and protecting yo
 ---
 
 ## 3. Storage & User Content
+
 - **Reference Images & Projects**:
   - When you import an image to trace, a local copy is stored within your device's private app sandbox storage (`context.filesDir`).
   - Project configurations (opacity, scale, rotation, grid settings, and drawing guide lines) are saved locally on your device.
@@ -33,27 +36,32 @@ TraceAR ("we", "our", or "the app") is committed to respecting and protecting yo
 ---
 
 ## 4. Third-Party Services, Analytics & Advertising
+
 - TraceAR contains **no third-party tracking libraries**, **no analytics SDKs**, **no advertising networks**, and **no crash reporting services**.
 - We do not use cookies or tracking identifiers.
 
 ---
 
 ## 5. Children's Privacy
+
 Because TraceAR does not collect, store, or share any personal information from anyone, it complies with global children's privacy regulations including the Children's Online Privacy Protection Act (COPPA) and the General Data Protection Regulation (GDPR).
 
 ---
 
 ## 6. Permissions Summary
-| Permission | Why It Is Needed |
-|---|---|
+
+| Permission                  | Why It Is Needed                                                                               |
+| --------------------------- | ---------------------------------------------------------------------------------------------- |
 | `android.permission.CAMERA` | To display the camera view and anchor the drawing overlay to your paper via Augmented Reality. |
 
 ---
 
 ## 7. Changes to This Policy
+
 If we make changes to this Privacy Policy in future updates, we will update the "Last Updated" date at the top and include the new policy within the app and on our store listing.
 
 ---
 
 ## 8. Contact Us
+
 If you have any questions or feedback regarding this Privacy Policy, please contact the developer via the email listed on our Google Play Store page.
